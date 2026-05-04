@@ -13,6 +13,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"geral" | "dados" | "motor">("geral");
 
   // Carrega assuntos iniciais
   useEffect(() => {
@@ -51,8 +52,8 @@ export default function Home() {
         selectedSubject={selectedSubject}
         onSelectSubject={setSelectedSubject}
         onNewChat={() => setMessages([])}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenUpload={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => { setSettingsTab("geral"); setIsSettingsOpen(true); }}
+        onOpenUpload={() => { setSettingsTab("dados"); setIsSettingsOpen(true); }}
         isCollapsed={isCollapsed}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
       />
@@ -68,6 +69,7 @@ export default function Home() {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         subjects={subjects}
+        initialTab={settingsTab}
       />
     </main>
   );

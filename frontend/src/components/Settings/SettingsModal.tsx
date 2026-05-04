@@ -12,13 +12,22 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   subjects: string[];
+  initialTab?: Tab;
 }
 
 type Tab = "geral" | "dados" | "motor";
 
-export default function SettingsModal({ isOpen, onClose, subjects }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("geral");
+export default function SettingsModal({ isOpen, onClose, subjects, initialTab = "geral" }: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincroniza a aba quando o modal abre
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   
   // Fecha ao apertar ESC
   useEffect(() => {
@@ -50,13 +59,7 @@ export default function SettingsModal({ isOpen, onClose, subjects }: SettingsMod
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="relative w-full max-w-[840px] h-[600px] bg-[#171717] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex"
         >
-          {/* Botão Fechar Mobile/Topo */}
-          <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 text-[#666] hover:text-white hover:bg-[#2f2f2f] rounded-lg transition-all z-50"
-          >
-            <X size={20} />
-          </button>
+          {/* Botão Fechar removido da posição absoluta para evitar sobreposição */}
 
           {/* SIDEBAR DO MODAL */}
           <aside className="w-64 bg-[#121212] border-r border-[#333] p-4 flex flex-col gap-1">
@@ -87,12 +90,26 @@ export default function SettingsModal({ isOpen, onClose, subjects }: SettingsMod
             />
           </aside>
 
-          {/* CONTEÚDO PRINCIPAL */}
-          <main className="flex-1 overflow-y-auto p-8 bg-[#171717]">
-            {activeTab === "geral" && <GeralTab />}
-            {activeTab === "dados" && <DadosTab subjects={subjects} />}
-            {activeTab === "motor" && <MotorTab />}
-          </main>
+          {/* ÁREA DE CONTEÚDO COM HEADER DEDICADO */}
+          <div className="flex-1 flex flex-col bg-[#171717]">
+            {/* Header Interno para o Botão Fechar */}
+            <header className="h-16 flex items-center justify-end px-6 shrink-0 border-b border-[#333]/30">
+              <button 
+                onClick={onClose}
+                className="p-2 text-[#666] hover:text-white hover:bg-[#2f2f2f] rounded-xl transition-all"
+                title="Fechar (Esc)"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            {/* Conteúdo da Aba */}
+            <main className="flex-1 overflow-y-auto p-8 pt-6">
+              {activeTab === "geral" && <GeralTab />}
+              {activeTab === "dados" && <DadosTab subjects={subjects} />}
+              {activeTab === "motor" && <MotorTab />}
+            </main>
+          </div>
         </motion.div>
       </div>
     </AnimatePresence>
@@ -142,16 +159,84 @@ function GeralTab() {
 }
 
 function DadosTab({ subjects }: { subjects: string[] }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    setError(null);
+    setSuccess(false);
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append("files", files[i]);
+    }
+
+    try {
+      const response = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Falha no upload");
+      
+      setSuccess(true);
+      // Recarrega a página após 1.5s para atualizar a lista de arquivos
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      setError("Erro ao enviar arquivos. Verifique a conexão.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <section>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-medium text-white">Base de Dados</h3>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-full text-sm font-semibold hover:bg-[#eee] transition-all">
-            <Upload size={16} />
-            Importar PDF
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            multiple 
+            accept=".pdf" 
+            className="hidden" 
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+              uploading ? "bg-[#333] text-[#555] cursor-not-allowed" : "bg-white text-black hover:bg-[#eee]"
+            }`}
+          >
+            {uploading ? (
+              <div className="w-4 h-4 border-2 border-[#555] border-t-white rounded-full animate-spin" />
+            ) : (
+              <Upload size={16} />
+            )}
+            {uploading ? "Enviando..." : "Importar PDF"}
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2">
+            <AlertCircle size={14} />
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs flex items-center gap-2">
+            <Check size={14} />
+            Arquivos indexados com sucesso! Atualizando...
+          </div>
+        )}
 
         <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl overflow-hidden">
           <div className="px-4 py-3 bg-[#262626] border-b border-[#333] text-[10px] font-bold text-[#666] uppercase tracking-widest">
