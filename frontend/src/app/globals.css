@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@layer base {
+  button {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    outline: none;
+    cursor: pointer;
+  }
+  
+  input, textarea {
+    background-color: transparent;
+    outline: none;
+    border: none;
+  }
+
+  body {
+    background-color: #212121;
+    color: #ececec;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+:root {
+  --foreground-rgb: 236, 236, 236;
+  --background-start-rgb: 33, 33, 33;
+  --background-end-rgb: 33, 33, 33;
+}

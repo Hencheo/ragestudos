@@ -1,0 +1,11 @@
+PASSO 1: Ligar o Banco de Dados
+Abra um terminal na pasta do projeto, rode o comando abaixo e não feche a janela:
+
+uv run chroma run --path ./db --host 0.0.0.0 --port 8000
+
+----------------------------------------------------
+
+PASSO 2: Ligar a Interface
+Abra UM NOVO terminal na mesma pasta do projeto e rode:
+
+uv run streamlit run app.py
