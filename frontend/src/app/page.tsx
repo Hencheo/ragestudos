@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import SidebarMenu from "@/components/Navigation/SidebarMenu";
 import ChatInterface from "@/components/Chat/ChatInterface";
+import SettingsModal from "@/components/Settings/SettingsModal";
 import { queryHermes, getStats } from "@/lib/api";
 
 export default function Home() {
@@ -11,6 +12,7 @@ export default function Home() {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Carrega assuntos iniciais
   useEffect(() => {
@@ -49,8 +51,8 @@ export default function Home() {
         selectedSubject={selectedSubject}
         onSelectSubject={setSelectedSubject}
         onNewChat={() => setMessages([])}
-        onOpenSettings={() => alert("Configurações em breve!")}
-        onOpenUpload={() => alert("Upload em breve!")}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenUpload={() => setIsSettingsOpen(true)}
         isCollapsed={isCollapsed}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
       />
@@ -61,6 +63,11 @@ export default function Home() {
         subjects={subjects}
         selectedSubject={selectedSubject}
         onSelectSubject={setSelectedSubject}
+      />
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        subjects={subjects}
       />
     </main>
   );

@@ -117,6 +117,7 @@ export default function SidebarMenu({
         </button>
 
         <button
+          onClick={onOpenSettings}
           className={`w-full group flex items-center ${isCollapsed ? "justify-center" : "gap-3 px-3"} py-2.5 rounded-lg text-sm text-[#999] hover:bg-[#222] hover:text-[#ccc] transition-all bg-transparent`}
           title={isCollapsed ? "Gerenciar Base" : ""}
         >
