@@ -7,7 +7,7 @@ para gerenciar variáveis de ambiente e parâmetros do sistema.
 import os
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,7 +49,7 @@ class RAGConfig(BaseSettings):
     llm_api_key: str = Field(
         default="",
         description="Chave de API do provedor LLM",
-        alias="LLM_API_KEY"
+        validation_alias=AliasChoices("LLM_API_KEY", "GOOGLE_API_KEY")
     )
     
     llm_api_base: Optional[str] = Field(
@@ -84,7 +84,7 @@ class RAGConfig(BaseSettings):
     )
     
     chroma_port: int = Field(
-        default=8000,
+        default=8001,
         description="Porta do servidor ChromaDB",
         alias="CHROMA_PORT"
     )
@@ -134,7 +134,7 @@ class RAGConfig(BaseSettings):
     
     # Prompt Configuration
     system_prompt: str = Field(
-        default="Você é um assistente prestativo e preciso. Responda sempre em português brasileiro, de forma clara e profissional, baseando-se estritamente nos documentos fornecidos.",
+        default="Você é um assistente prestativo e preciso. Responda sempre em português brasileiro, de forma clara e profissional, baseando-se estritamente nos documentos fornecidos. Use formatação Markdown (negrito, listas, tabelas) para tornar a resposta mais legível e organizada.",
         description="Prompt de sistema para orientar o comportamento do modelo",
         alias="SYSTEM_PROMPT"
     )

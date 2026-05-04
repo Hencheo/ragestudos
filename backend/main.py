@@ -41,7 +41,7 @@ def get_stats():
     return service.get_database_stats()
 
 @app.post("/upload")
-async def upload_files(
+def upload_files(
     files: List[UploadFile] = File(...), 
     subject: str = Form("")
 ):
@@ -50,14 +50,14 @@ async def upload_files(
     
     files_data = []
     for file in files:
-        content = await file.read()
+        content = file.file.read()
         files_data.append({"name": file.filename, "content": content})
     
     result = service.process_and_index_files(files_data, subject)
     return result
 
 @app.post("/query")
-async def query_rag(
+def query_rag(
     question: str = Form(...), 
     subject: Optional[str] = Form(None)
 ):

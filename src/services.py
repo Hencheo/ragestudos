@@ -59,6 +59,16 @@ class HermesService:
                     extra_meta["subject"] = subject.strip()
                 
                 docs = self.loader.load_pdf(tmp_path, extra_metadata=extra_meta)
+                
+                # Extração Automática de Metadados via IA
+                if docs and self.engine:
+                    # Usa o conteúdo do primeiro documento (página 1) para extrair metadados
+                    ai_metadata = self.engine.extract_metadata_from_text(docs[0].text)
+                    
+                    # Aplica os metadados da IA em todos os chunks/páginas do arquivo
+                    for doc in docs:
+                        doc.metadata.update(ai_metadata)
+                        
                 all_docs.extend(docs)
             finally:
                 Path(tmp_path).unlink(missing_ok=True)

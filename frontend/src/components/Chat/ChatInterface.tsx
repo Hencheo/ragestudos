@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send, User, Bot, Paperclip, Mic, Sparkles, ChevronDown, Database, Tag, Check } from "lucide-react";
+import { Send, User, Bot, Paperclip, Mic, Sparkles, ChevronDown, Database, Tag, Check, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -28,6 +29,7 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +43,12 @@ export default function ChatInterface({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleCopy = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -60,7 +68,7 @@ export default function ChatInterface({
     <div className="flex-1 flex flex-col bg-[#212121] h-screen overflow-hidden">
 
       {/* 1. Header Discreto */}
-      <header className="h-14 border-b border-[#333] flex items-center px-6 justify-between bg-[#212121] z-20 flex-shrink-0">
+      <header className="h-14 flex items-center px-6 justify-between bg-[#212121] z-20 flex-shrink-0">
         <div className="relative" ref={dropdownRef}>
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -153,21 +161,54 @@ export default function ChatInterface({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
-                  className={`flex gap-5 group ${msg.role === "assistant" ? "items-start" : "items-start flex-row-reverse"
-                    }`}
+                  className={`flex flex-col group ${msg.role === "assistant" ? "items-start" : "items-end"}`}
                 >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg border transition-all ${msg.role === "assistant"
-                      ? "bg-[#2f2f2f] border-[#444] text-green-400"
-                      : "bg-[#ececec] border-white text-[#212121]"
-                    }`}>
-                    {msg.role === "assistant" ? <Bot size={20} /> : <User size={20} />}
+                  <div className={`max-w-[85%] px-4 py-2.5 rounded-[22px] transition-all ${
+                    msg.role === "user" 
+                      ? "bg-[#2f2f2f] text-[#ececec] border border-[#333] hover:border-[#444]" 
+                      : "text-[#ececec] px-0"
+                  }`}>
+                    <div className="text-[15px] leading-relaxed">
+                      {msg.role === "assistant" ? (
+                        <ReactMarkdown 
+                          components={{
+                            p: ({ ...props }) => <p className="mb-3 last:mb-0" {...props} />,
+                            ul: ({ ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1" {...props} />,
+                            ol: ({ ...props }) => <ol className="list-decimal ml-5 mb-3 space-y-1" {...props} />,
+                            li: ({ ...props }) => <li className="pl-1" {...props} />,
+                            strong: ({ ...props }) => <strong className="font-bold text-white" {...props} />,
+                            code: ({ ...props }) => <code className="bg-[#171717] px-1.5 py-0.5 rounded text-blue-300 font-mono text-sm" {...props} />,
+                            h1: ({ ...props }) => <h1 className="text-xl font-bold mb-4 mt-2" {...props} />,
+                            h2: ({ ...props }) => <h2 className="text-lg font-bold mb-3 mt-2" {...props} />,
+                            h3: ({ ...props }) => <h3 className="text-base font-bold mb-2 mt-1" {...props} />,
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className={`max-w-[85%] px-1 pt-1.5 space-y-2 ${msg.role === "user" ? "text-right" : "text-left"
-                    }`}>
-                    <div className="text-[#ececec] text-[15px] leading-relaxed whitespace-pre-wrap">
-                      {msg.content}
-                    </div>
+                  {/* Botão de Copiar */}
+                  <div className={`flex items-center mt-1.5 transition-opacity opacity-0 group-hover:opacity-100 ${
+                    msg.role === "user" ? "mr-2" : "ml-0"
+                  }`}>
+                    <button
+                      onClick={() => handleCopy(msg.content, idx)}
+                      className="p-1.5 rounded-lg hover:bg-[#2f2f2f] text-[#666] hover:text-[#999] transition-all flex items-center gap-1.5"
+                      title="Copiar mensagem"
+                    >
+                      {copiedIndex === idx ? (
+                        <>
+                          <Check size={14} className="text-green-500" />
+                          <span className="text-[10px] font-medium text-green-500">Copiado!</span>
+                        </>
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
                   </div>
                 </motion.div>
               ))
@@ -175,14 +216,11 @@ export default function ChatInterface({
           </AnimatePresence>
 
           {isLoading && (
-            <div className="flex gap-5 items-center">
-              <div className="w-9 h-9 rounded-xl bg-[#2f2f2f] border border-[#444] flex items-center justify-center text-green-400">
-                <Bot size={20} className="animate-spin-slow" />
-              </div>
-              <div className="flex gap-1.5 items-center bg-[#2f2f2f] px-4 py-3 rounded-2xl border border-[#333]">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce" />
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+            <div className="flex justify-start">
+              <div className="flex gap-1.5 items-center px-0 py-3">
+                <div className="w-1.5 h-1.5 bg-[#444] rounded-full animate-bounce" />
+                <div className="w-1.5 h-1.5 bg-[#444] rounded-full animate-bounce [animation-delay:0.2s]" />
+                <div className="w-1.5 h-1.5 bg-[#444] rounded-full animate-bounce [animation-delay:0.4s]" />
               </div>
             </div>
           )}

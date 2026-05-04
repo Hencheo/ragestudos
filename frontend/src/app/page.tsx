@@ -10,6 +10,7 @@ export default function Home() {
   const [subjects, setSubjects] = useState<string[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Carrega assuntos iniciais
   useEffect(() => {
@@ -50,6 +51,8 @@ export default function Home() {
         onNewChat={() => setMessages([])}
         onOpenSettings={() => alert("Configurações em breve!")}
         onOpenUpload={() => alert("Upload em breve!")}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
       />
       <ChatInterface 
         messages={messages}

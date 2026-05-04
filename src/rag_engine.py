@@ -18,6 +18,7 @@ from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
+from llama_index.core.postprocessor import LLMRerank
 
 from src.config import RAGConfig
 
@@ -75,6 +76,59 @@ class RAGEngine:
         self._setup_vector_store()
         
         self.logger.info("RAGEngine inicializado com sucesso")
+    
+    def extract_metadata_from_text(self, text: str) -> dict:
+        """Usa a IA para extrair metadados inteligentes de um texto.
+        
+        Args:
+            text: O texto extraído do documento (ou amostra dele).
+            
+        Returns:
+            dict: Dicionário com document_type, main_subject, keywords e summary.
+        """
+        # Pega apenas o início do texto para economizar tokens e tempo
+        sample_text = text[:3000]
+        
+        prompt = f"""
+        Analise o texto abaixo e extraia informações organizadas para indexação em um sistema RAG.
+        Responda APENAS em formato JSON válido, sem explicações adicionais.
+        
+        Texto:
+        ---
+        {sample_text}
+        ---
+        
+        JSON esperado:
+        {{
+            "document_type": "Ex: Tutorial, Prova, Documentação, Currículo, Livro, Artigo",
+            "main_subject": "O tópico central do arquivo em poucas palavras",
+            "keywords": ["tag1", "tag2", "tag3"],
+            "summary": "Um resumo de uma frase sobre o conteúdo"
+        }}
+        """
+        
+        try:
+            # Tenta obter a resposta da IA
+            response = Settings.llm.complete(prompt)
+            import json
+            import re
+            
+            # Limpa a resposta para garantir que seja um JSON válido (remove markdown se houver)
+            content = str(response).strip()
+            if "```json" in content:
+                content = re.search(r"```json\s+(.*?)\s+```", content, re.DOTALL).group(1)
+            elif "```" in content:
+                content = re.search(r"```\s+(.*?)\s+```", content, re.DOTALL).group(1)
+                
+            return json.loads(content)
+        except Exception as e:
+            self.logger.warning(f"Falha na extração automática de metadados: {e}")
+            return {
+                "document_type": "Desconhecido",
+                "main_subject": "Indeterminado",
+                "keywords": [],
+                "summary": "Não foi possível gerar resumo."
+            }
     
     def _setup_llm(self) -> None:
         """Configura o LLM com base no provedor escolhido."""
@@ -184,11 +238,14 @@ class RAGEngine:
                         self.vector_store,
                     )
                     self._query_engine = self.index.as_query_engine(
-                        similarity_top_k=5,
+                        similarity_top_k=10, # Traz mais candidatos para o Rerank
+                        node_postprocessors=[
+                            LLMRerank(choice_batch_size=5, top_n=3)
+                        ],
                         response_mode="compact",
                         verbose=False,
                     )
-                    self.logger.info(f"Índice carregado do banco de dados ({self.chroma_collection.count()} chunks)")
+                    self.logger.info(f"Índice carregado do banco de dados ({self.chroma_collection.count()} chunks) com Reranking ativo")
                 else:
                     self.logger.info("Coleção vazia no banco de dados. Índice não carregado.")
             except Exception as inner_e:
@@ -254,9 +311,12 @@ class RAGEngine:
                     show_progress=show_progress,
                 )
             
-            # Atualiza o query engine
+            # Atualiza o query engine com Reranking
             self._query_engine = self.index.as_query_engine(
-                similarity_top_k=5,
+                similarity_top_k=10, # Aumentado para dar mais opções ao Reranker
+                node_postprocessors=[
+                    LLMRerank(choice_batch_size=5, top_n=3)
+                ],
                 response_mode="compact",
                 verbose=False,
             )
@@ -326,7 +386,10 @@ class RAGEngine:
                 # Query simples (com ou sem filtro)
                 if filters:
                     temp_query_engine = self.index.as_query_engine(
-                        similarity_top_k=5,
+                        similarity_top_k=10,
+                        node_postprocessors=[
+                            LLMRerank(choice_batch_size=5, top_n=3)
+                        ],
                         response_mode="compact",
                         filters=filters,
                     )
