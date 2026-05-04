@@ -137,8 +137,8 @@ export default function ChatInterface({
                 animate={{ opacity: 1, y: 0 }}
                 className="h-[60vh] flex flex-col items-center justify-center text-white text-center"
               >
-                <div className="w-16 h-16 bg-[#2f2f2f] rounded-2xl flex items-center justify-center mb-6 shadow-xl border border-[#333]">
-                  <Bot size={32} className="text-green-400" />
+                <div className="w-16 h-16 bg-[#2f2f2f] rounded-2xl flex items-center justify-center mb-6 shadow-xl border border-[#333] overflow-hidden">
+                  <img src="/assets/icon.svg" alt="Logo" className="w-10 h-10 object-contain" />
                 </div>
                 <h2 className="text-3xl font-semibold mb-3 tracking-tight">O que vamos analisar hoje?</h2>
                 <p className="text-[#888] max-w-sm leading-relaxed">

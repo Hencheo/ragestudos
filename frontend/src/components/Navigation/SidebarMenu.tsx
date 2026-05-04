@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
-import { 
-  Plus, 
-  MessageSquare, 
-  Database, 
-  Settings, 
-  Upload, 
+import {
+  Plus,
+  MessageSquare,
+  Database,
+  Settings,
+  Upload,
   BookOpen,
   Activity,
   ChevronRight
@@ -32,7 +32,12 @@ export default function SidebarMenu({
 }: SidebarMenuProps) {
   return (
     <aside className="w-[260px] bg-[#171717] h-screen flex flex-col border-r border-[#333] text-[#ececec] select-none">
-      
+
+      {/* Logo Minimalista (Estilo ChatGPT) */}
+      <div className="p-4 pb-0 flex justify-start">
+        <img src="/assets/icon.svg" alt="Hermes Icon" className="w-8 h-8 opacity-90 hover:opacity-100 transition-opacity cursor-pointer" />
+      </div>
+
       {/* 1. TOP: Nova Conversa */}
       <div className="p-3">
         <motion.button
@@ -48,7 +53,7 @@ export default function SidebarMenu({
 
       {/* 2. MIDDLE: Contextos / Assuntos - Agora movidos para o dropdown do header */}
       <div className="flex-1 overflow-y-auto px-3 mt-4 space-y-1 custom-scrollbar">
-        
+
         {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
 
         {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
@@ -65,8 +70,8 @@ export default function SidebarMenu({
         <div className="text-[10px] font-bold text-[#555] px-3 uppercase tracking-[0.1em] mb-2 pt-2">
           Biblioteca
         </div>
-        
-        <button 
+
+        <button
           onClick={onOpenUpload}
           className="w-full group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#999] hover:bg-[#222] hover:text-[#ccc] transition-all bg-transparent"
         >
@@ -76,7 +81,7 @@ export default function SidebarMenu({
           Importar Dados
         </button>
 
-        <button 
+        <button
           className="w-full group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#999] hover:bg-[#222] hover:text-[#ccc] transition-all bg-transparent"
         >
           <div className="bg-[#222] p-1.5 rounded group-hover:bg-[#333]">
@@ -86,7 +91,7 @@ export default function SidebarMenu({
         </button>
 
         <div className="pt-2">
-          <button 
+          <button
             onClick={onOpenSettings}
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-[#ccc] hover:bg-[#2f2f2f] transition-all mt-2 border border-transparent hover:border-[#444] bg-transparent"
           >

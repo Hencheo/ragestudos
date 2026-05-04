@@ -26,4 +26,6 @@ dependencies = [
     "httpx",
     "llama-index-readers-docling",
     "docling",
+    "openai-whisper",
+    "pydub",
 ]
