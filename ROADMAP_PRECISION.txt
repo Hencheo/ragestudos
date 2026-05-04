@@ -1,0 +1,43 @@
+# 🚀 HERMES RAG ENGINE - ROADMAP DE PRECISÃO (CONCLUÍDO)
+
+Este documento registra as evoluções críticas realizadas para transformar o Hermes em um motor RAG de nível profissional, estável e escalável.
+
+---
+
+## 💎 MARCOS ALCANÇADOS
+
+### 1. Migração e Estabilização OpenAI (Ouro)
+*   **Resolução de Erros 403:** Alinhamento total da API Key com o projeto 'ragestudos'.
+*   **Padronização de Embeddings:** Fixado em `text-embedding-3-large` para máxima recuperação semântica.
+*   **Consistência de Variáveis:** Normalização do `llm_provider` para ser case-insensitive, evitando quedas acidentais no motor do Google.
+
+### 2. Integração Nativa Fireworks AI
+*   **Fim da Validação OpenAI:** Substituição da classe genérica OpenAI pela classe nativa `Fireworks` do LlamaIndex.
+*   **Suporte ao Kimi:** O modelo `kimi-k2p5-turbo` agora opera sem erros de "modelo desconhecido".
+
+### 3. Reformulação de UI/UX (Escalabilidade)
+*   **Divisão de Fluxos:** O modal de configurações foi segmentado para evitar rolagem infinita.
+    *   **Aba Upload:** Exclusiva para ingestão de novos conhecimentos.
+    *   **Aba Documentos:** Uma biblioteca dedicada para gestão do acervo.
+*   **Feedback em Tempo Real:** Implementação de contadores de arquivos e estados de carregamento (loading) na biblioteca.
+
+### 4. Gestão de Dados Profissional (Danger Zone)
+*   **Deleção Individual:** Agora é possível remover documentos específicos por nome de arquivo. O motor recarrega o índice automaticamente após a remoção.
+*   **Reset Nuclear:** O botão de "Limpar Base" agora executa um `delete_collection` físico no ChromaDB, garantindo um banco 100% limpo quando solicitado.
+*   **Resiliência:** Implementação de tratamento para "Banco Vazio". Se não houver documentos, o Hermes responde educadamente pedindo uploads em vez de retornar erro 500.
+
+---
+
+## 🛠️ ARQUITETURA ATUAL
+*   **Backend:** FastAPI + LlamaIndex.
+*   **Vetorização:** ChromaDB (Persistente na porta 8001).
+*   **Embeddings:** OpenAI Large (V1536).
+*   **LLM Dinâmico:** Suporte estável para OpenAI (GPT-4o) e Fireworks (Kimi).
+
+## 📌 PRÓXIMOS PASSOS (SUGESTÃO)
+*   **Busca na Biblioteca:** Adicionar uma barra de pesquisa na aba de Documentos.
+*   **Cache de Respostas:** Implementar o sistema de cache no backend para economizar tokens em perguntas repetitivas.
+*   **Reranker Inteligente:** Adicionar uma camada de pós-processamento para re-ranquear os trechos recuperados.
+
+---
+**Status:** ✅ Produção Estável | **Data:** 04/05/2026

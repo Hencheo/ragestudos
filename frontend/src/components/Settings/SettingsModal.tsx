@@ -15,7 +15,7 @@ interface SettingsModalProps {
   initialTab?: Tab;
 }
 
-type Tab = "geral" | "dados" | "motor";
+type Tab = "geral" | "dados" | "documentos" | "motor";
 
 export default function SettingsModal({ isOpen, onClose, subjects, initialTab = "geral" }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
@@ -79,8 +79,14 @@ export default function SettingsModal({ isOpen, onClose, subjects, initialTab = 
             <TabButton 
               active={activeTab === "dados"} 
               onClick={() => setActiveTab("dados")}
-              icon={<Database size={18} />}
-              label="Base de Dados"
+              icon={<Upload size={18} />}
+              label="Upload de Dados"
+            />
+            <TabButton 
+              active={activeTab === "documentos"} 
+              onClick={() => setActiveTab("documentos")}
+              icon={<FileText size={18} />}
+              label="Documentos"
             />
             <TabButton 
               active={activeTab === "motor"} 
@@ -106,7 +112,8 @@ export default function SettingsModal({ isOpen, onClose, subjects, initialTab = 
             {/* Conteúdo da Aba */}
             <main className="flex-1 overflow-y-auto p-8 pt-6">
               {activeTab === "geral" && <GeralTab />}
-              {activeTab === "dados" && <DadosTab subjects={subjects} />}
+              {activeTab === "dados" && <UploadTab />}
+              {activeTab === "documentos" && <DocumentosTab />}
               {activeTab === "motor" && <MotorTab />}
             </main>
           </div>
@@ -158,38 +165,47 @@ function GeralTab() {
   );
 }
 
-function DadosTab({ subjects }: { subjects: string[] }) {
+function UploadTab() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (files) {
+      setSelectedFiles(Array.from(files));
+      setError(null);
+      setSuccess(false);
+    }
+  };
 
+  const handleConfirmUpload = async () => {
+    if (selectedFiles.length === 0) return;
     setUploading(true);
     setError(null);
     setSuccess(false);
 
     const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append("files", files[i]);
-    }
+    selectedFiles.forEach(file => formData.append("files", file));
+    formData.append("subject", subject);
 
     try {
       const response = await fetch("http://localhost:8000/upload", {
         method: "POST",
         body: formData,
       });
-
-      if (!response.ok) throw new Error("Falha no upload");
-      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Falha no upload");
+      }
       setSuccess(true);
-      // Recarrega a página após 1.5s para atualizar a lista de arquivos
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err) {
-      setError("Erro ao enviar arquivos. Verifique a conexão.");
+      setSelectedFiles([]);
+      setSubject("");
+    } catch (err: any) {
+      setError(err.message || "Erro ao enviar arquivos.");
     } finally {
       setUploading(false);
     }
@@ -198,64 +214,160 @@ function DadosTab({ subjects }: { subjects: string[] }) {
   return (
     <div className="space-y-8">
       <section>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-medium text-white">Base de Dados</h3>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            multiple 
-            accept=".pdf" 
-            className="hidden" 
-          />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-              uploading ? "bg-[#333] text-[#555] cursor-not-allowed" : "bg-white text-black hover:bg-[#eee]"
-            }`}
-          >
-            {uploading ? (
-              <div className="w-4 h-4 border-2 border-[#555] border-t-white rounded-full animate-spin" />
-            ) : (
+        <h3 className="text-xl font-medium text-white mb-6">Upload de Conhecimento</h3>
+        <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl p-6 mb-8 space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-[#666] uppercase tracking-widest">
+              Assunto / Etiqueta de Contexto
+            </label>
+            <input 
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Ex: Currículos, Finanças, Projetos..."
+              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 transition-all outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={onFileSelect} 
+              multiple 
+              accept=".pdf,.txt" 
+              className="hidden" 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-[#2a2a2a] text-white rounded-lg text-sm font-medium hover:bg-[#333] transition-all"
+            >
               <Upload size={16} />
+              Selecionar Arquivos (.pdf, .txt)
+            </button>
+            {selectedFiles.length > 0 && (
+              <span className="text-xs text-[#666]">
+                {selectedFiles.length} arquivo(s) selecionado(s)
+              </span>
             )}
-            {uploading ? "Enviando..." : "Importar PDF"}
-          </button>
+          </div>
+
+          {selectedFiles.length > 0 && (
+            <div className="pt-4 border-t border-[#333]/50">
+              <button 
+                onClick={handleConfirmUpload}
+                disabled={uploading}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                  uploading 
+                    ? "bg-[#333] text-[#555] cursor-not-allowed" 
+                    : "bg-white text-black hover:scale-[1.02] active:scale-[0.98]"
+                }`}
+              >
+                {uploading ? (
+                  <div className="w-4 h-4 border-2 border-[#555] border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Check size={18} />
+                )}
+                {uploading ? "Indexando Documentos..." : "Confirmar e Indexar Agora"}
+              </button>
+            </div>
+          )}
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2">
-            <AlertCircle size={14} />
-            {error}
+          <div className="mb-4 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-red-400 text-xs flex items-center gap-3">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs flex items-center gap-2">
-            <Check size={14} />
-            Arquivos indexados com sucesso! Atualizando...
+          <div className="mb-4 p-4 bg-green-500/5 border border-green-500/20 rounded-2xl text-green-400 text-xs flex items-center gap-3">
+            <Check size={18} className="shrink-0" />
+            <span>Arquivos indexados com sucesso!</span>
           </div>
         )}
+      </section>
+    </div>
+  );
+}
 
+function DocumentosTab() {
+  const [dbStats, setDbStats] = useState<{ total_files: number, files: Record<string, { subject: string, chunks: number }> }>({ total_files: 0, files: {} });
+  const [loading, setLoading] = useState(true);
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/stats");
+      if (res.ok) {
+        const data = await res.json();
+        setDbStats(data);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar stats:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const handleDeleteFile = async (fileName: string) => {
+    if (!confirm(`Deseja realmente remover o arquivo "${fileName}"?`)) return;
+    try {
+      const res = await fetch(`http://localhost:8000/documents/${encodeURIComponent(fileName)}`, {
+        method: "DELETE"
+      });
+      if (res.ok) fetchStats();
+      else alert("Erro ao deletar arquivo.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClearDatabase = async () => {
+    if (!confirm("⚠️ ATENÇÃO: Isso apagará TODO o conhecimento do Hermes. Deseja continuar?")) return;
+    try {
+      const res = await fetch("http://localhost:8000/clear", { method: "POST" });
+      if (res.ok) {
+        fetchStats();
+        alert("Base de conhecimento limpa com sucesso.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <h3 className="text-xl font-medium text-white mb-6">Documentos Indexados</h3>
         <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 bg-[#262626] border-b border-[#333] text-[10px] font-bold text-[#666] uppercase tracking-widest">
-            Documentos Indexados
+          <div className="px-4 py-3 bg-[#262626] border-b border-[#333] text-[10px] font-bold text-[#666] uppercase tracking-widest flex justify-between">
+            <span>Biblioteca Atual</span>
+            <span className="text-blue-400">{dbStats.total_files} arquivos</span>
           </div>
-          <div className="divide-y divide-[#333]">
-            {subjects.length > 0 ? (
-              subjects.map((sub, i) => (
+          <div className="divide-y divide-[#333] max-h-[380px] overflow-y-auto custom-scrollbar">
+            {loading ? (
+              <div className="p-12 text-center text-[#555] animate-pulse">Carregando biblioteca...</div>
+            ) : Object.keys(dbStats.files).length > 0 ? (
+              Object.entries(dbStats.files).map(([name, info], i) => (
                 <div key={i} className="px-4 py-4 flex items-center justify-between group hover:bg-[#252525] transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#2a2a2a] rounded-lg text-blue-400">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="p-2 bg-[#2a2a2a] rounded-lg text-blue-400 shrink-0">
                       <FileText size={16} />
                     </div>
-                    <div>
-                      <div className="text-sm font-medium text-white">{sub || "Sem Assunto"}</div>
-                      <div className="text-[11px] text-[#555]">PDF • Processado via Docling</div>
+                    <div className="truncate">
+                      <div className="text-sm font-medium text-white truncate" title={name}>{name}</div>
+                      <div className="text-[10px] text-[#555]">Assunto: {info.subject} • {info.chunks} trechos</div>
                     </div>
                   </div>
-                  <button className="p-2 text-[#444] hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                  <button 
+                    onClick={() => handleDeleteFile(name)}
+                    className="p-2 text-[#444] hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                  >
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -276,7 +388,7 @@ function DadosTab({ subjects }: { subjects: string[] }) {
           Zona de Perigo
         </h4>
         <p className="text-xs text-red-400/60 mb-4">Apagar todos os dados da base é uma ação irreversível.</p>
-        <button className="text-xs font-bold text-red-500 hover:underline">
+        <button onClick={handleClearDatabase} className="text-xs font-bold text-red-500 hover:underline">
           Limpar toda a base de conhecimento
         </button>
       </section>
@@ -285,26 +397,105 @@ function DadosTab({ subjects }: { subjects: string[] }) {
 }
 
 function MotorTab() {
+  const [llmProvider, setLlmProvider] = useState("Google Gemini");
+  const [modelName, setModelName] = useState("gemini-2.5-flash");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/config")
+      .then(res => res.json())
+      .then(data => {
+        setLlmProvider(data.llm_provider);
+        setModelName(data.model_name);
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    
+    const formData = new FormData();
+    formData.append("llm_provider", llmProvider);
+    formData.append("model_name", modelName);
+
+    try {
+      const res = await fetch("http://localhost:8000/config", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Falha ao salvar configuração");
+      setMessage({ type: 'success', text: "Configuração do motor atualizada com sucesso!" });
+    } catch (err) {
+      setMessage({ type: 'error', text: "Erro ao salvar. Verifique o backend." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const providers = [
+    { name: "Google Gemini", models: ["gemini-2.5-flash", "gemini-1.5-pro"] },
+    { name: "Fireworks AI", models: ["accounts/fireworks/routers/kimi-k2p5-turbo"] },
+    { name: "OpenAI", models: ["gpt-4o", "gpt-4o-mini"] }
+  ];
+
   return (
     <div className="space-y-8">
       <section>
-        <h3 className="text-xl font-medium text-white mb-6">Motor RAG</h3>
-        <div className="space-y-6">
-          <SettingItem 
-            icon={<Cpu size={18} />} 
-            title="Modelo de Resposta" 
-            description="O cérebro por trás das respostas."
-            action={<Select value="Gemini 2.5 Flash" options={["Gemini 2.5 Flash", "Gemini 3.1 Pro"]} />}
-          />
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-[#999]">Temperatura</span>
-              <span className="text-sm text-white font-mono">0.7</span>
-            </div>
-            <input type="range" className="w-full accent-white h-1.5 bg-[#333] rounded-lg appearance-none cursor-pointer" />
-            <p className="text-[10px] text-[#555]">Valores mais baixos são mais precisos, valores altos mais criativos.</p>
+        <h3 className="text-xl font-medium text-white mb-6">Motor de Inteligência</h3>
+        
+        <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl p-6 space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-[#666] uppercase tracking-widest">Provedor de LLM</label>
+            <select 
+              value={llmProvider}
+              onChange={(e) => {
+                const p = e.target.value;
+                setLlmProvider(p);
+                const firstModel = providers.find(pr => pr.name === p)?.models[0];
+                if (firstModel) setModelName(firstModel);
+              }}
+              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
+            >
+              {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-[#666] uppercase tracking-widest">Modelo Específico</label>
+            <select 
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
+            >
+              {providers.find(p => p.name === llmProvider)?.models.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="pt-4 border-t border-[#333]/50">
+            <button 
+              onClick={handleSave}
+              disabled={saving}
+              className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${
+                saving ? "bg-[#333] text-[#555]" : "bg-white text-black hover:scale-[1.01]"
+              }`}
+            >
+              {saving ? "Salvando Alterações..." : "Aplicar Configurações do Motor"}
+            </button>
           </div>
         </div>
+
+        {message && (
+          <div className={`mt-4 p-4 rounded-2xl text-xs flex items-center gap-3 ${
+            message.type === 'success' ? "bg-green-500/5 border border-green-500/20 text-green-400" : "bg-red-500/5 border border-red-500/20 text-red-400"
+          }`}>
+            {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+            <span>{message.text}</span>
+          </div>
+        )}
       </section>
     </div>
   );

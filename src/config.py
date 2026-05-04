@@ -41,7 +41,7 @@ class RAGConfig(BaseSettings):
     
     # API Configuration
     llm_provider: str = Field(
-        default="Google Gemini",
+        default="openai",
         description="Provedor do modelo LLM",
         alias="LLM_PROVIDER"
     )
@@ -56,6 +56,18 @@ class RAGConfig(BaseSettings):
         default=None,
         description="URL base da API (necessário para Fireworks ou OpenAI customizado)",
         alias="LLM_API_BASE"
+    )
+
+    openai_api_key: Optional[str] = Field(
+        default=None,
+        description="Chave de API da OpenAI",
+        alias="OPENAI_API_KEY"
+    )
+
+    fireworks_api_key: Optional[str] = Field(
+        default=None,
+        description="Chave de API da Fireworks AI",
+        alias="FIREWORKS_API_KEY"
     )
 
     llama_cloud_api_key: Optional[str] = Field(
@@ -91,8 +103,8 @@ class RAGConfig(BaseSettings):
     
     # Model Configuration
     model_name: str = Field(
-        default="gemini-2.5-flash",  # Valor padrão caso não exista no .env
-        description="Nome do modelo Gemini",
+        default="gpt-4o-mini",  # Valor padrão para OpenAI
+        description="Nome do modelo LLM",
         alias="MODEL_NAME"
     )
 

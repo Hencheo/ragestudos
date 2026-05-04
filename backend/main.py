@@ -77,8 +77,39 @@ def query_rag(
 def clear_db():
     if not service:
         raise HTTPException(status_code=500, detail="Serviço não inicializado")
-    service.clear_database()
-    return {"success": True}
+    return service.clear_database()
+
+@app.delete("/documents/{file_name}")
+def delete_document(file_name: str):
+    if not service:
+        raise HTTPException(status_code=500, detail="Serviço não inicializado")
+    result = service.delete_document(file_name)
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail="Falha ao deletar documento")
+    return result
+
+@app.get("/config")
+def get_config():
+    if not service:
+        raise HTTPException(status_code=500, detail="Serviço não inicializado")
+    return {
+        "llm_provider": service.config.llm_provider,
+        "model_name": service.config.model_name
+    }
+
+@app.post("/config")
+def update_config(
+    llm_provider: str = Form(...),
+    model_name: str = Form(...)
+):
+    if not service:
+        raise HTTPException(status_code=500, detail="Serviço não inicializado")
+    
+    service.config.llm_provider = llm_provider
+    service.config.model_name = model_name
+    # Re-inicializa o motor para aplicar as mudanças de modelo/provedor
+    service.initialize_engine()
+    return {"status": "success", "provider": llm_provider, "model": model_name}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

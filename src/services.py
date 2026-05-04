@@ -117,15 +117,20 @@ class HermesService:
 
     def clear_database(self):
         """Limpa toda a base de conhecimento."""
+        if not self.engine:
+            self.initialize_engine()
+            
         if self.engine:
             self.engine.clear_index()
-        else:
-            # Fallback se o motor não estiver ativo mas o banco estiver rodando
-            client = chromadb.HttpClient(
-                host=self.config.chroma_host, 
-                port=self.config.chroma_port
-            )
-            try:
-                client.delete_collection("hermes_documents")
-            except Exception:
-                pass
+            return {"success": True}
+        return {"success": False, "message": "Motor não inicializado."}
+
+    def delete_document(self, file_name: str) -> Dict[str, Any]:
+        """Deleta um documento específico da base."""
+        if not self.engine:
+            self.initialize_engine()
+            
+        if self.engine:
+            success = self.engine.delete_document(file_name)
+            return {"success": success}
+        return {"success": False, "message": "Motor não inicializado."}

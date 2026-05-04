@@ -133,27 +133,27 @@ class RAGEngine:
     def _setup_llm(self) -> None:
         """Configura o LLM com base no provedor escolhido."""
         try:
-            if self.config.llm_provider == "OpenAI":
+            provider = self.config.llm_provider.lower()
+            
+            if "openai" in provider:
                 from llama_index.llms.openai import OpenAI
+                api_key = self.config.openai_api_key or self.api_key
                 llm = OpenAI(
                     model=self.config.model_name,
-                    api_key=self.api_key,
+                    api_key=api_key,
                     api_base=self.config.llm_api_base,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
                     system_prompt=self.config.system_prompt,
                 )
-            elif self.config.llm_provider == "Fireworks AI":
-                from llama_index.llms.openai import OpenAI
-                # Fireworks usa a interface da OpenAI
-                api_base = self.config.llm_api_base or "https://api.fireworks.ai/inference/v1"
-                llm = OpenAI(
+            elif "fireworks" in provider:
+                from llama_index.llms.fireworks import Fireworks
+                api_key = self.config.fireworks_api_key or self.api_key
+                llm = Fireworks(
                     model=self.config.model_name,
-                    api_key=self.api_key,
-                    api_base=api_base,
+                    api_key=api_key,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
-                    system_prompt=self.config.system_prompt,
                 )
             else: # Padrão para Google Gemini
                 from llama_index.llms.google_genai import GoogleGenAI
@@ -174,19 +174,25 @@ class RAGEngine:
     def _setup_embeddings(self) -> None:
         """Configura o modelo de embeddings com base no provedor."""
         try:
-            if self.config.llm_provider in ["OpenAI", "Fireworks AI"]:
+            embedding_model_name = self.config.embedding_model
+            
+            # Se o modelo for da OpenAI ou o provedor for OpenAI
+            if "text-embedding-" in embedding_model_name or self.config.llm_provider == "OpenAI":
                 from llama_index.embeddings.openai import OpenAIEmbedding
-                # O Fireworks suporta modelos de embeddings na mesma API
-                api_base = self.config.llm_api_base if self.config.llm_provider == "OpenAI" else "https://api.fireworks.ai/inference/v1"
+                
+                # Usa a chave da OpenAI se disponível, senão tenta a chave geral
+                api_key = self.config.openai_api_key or self.api_key
+                
+                self.logger.info(f"Configurando embeddings OpenAI: {embedding_model_name}")
                 embed_model = OpenAIEmbedding(
-                    model_name=self.config.embedding_model,
-                    api_key=self.api_key,
-                    api_base=api_base,
+                    model_name=embedding_model_name,
+                    api_key=api_key,
                 )
             else:
                 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
+                self.logger.info(f"Configurando embeddings Google: {embedding_model_name}")
                 embed_model = GoogleGenAIEmbedding(
-                    model_name=self.config.embedding_model,
+                    model_name=embedding_model_name,
                     api_key=self.api_key,
                 )
             Settings.embed_model = embed_model
@@ -298,6 +304,14 @@ class RAGEngine:
         
         self.logger.info(f"Indexando {len(documents)} documentos...")
         
+        # Sanitiza metadados para evitar erros no ChromaDB (converte listas em strings)
+        for doc in documents:
+            for key, value in doc.metadata.items():
+                if isinstance(value, list):
+                    doc.metadata[key] = ", ".join(map(str, value))
+                elif not isinstance(value, (str, int, float, type(None))):
+                    doc.metadata[key] = str(value)
+        
         try:
             if self.index is not None:
                 self.logger.info("Adicionando novos documentos ao índice existente...")
@@ -358,10 +372,7 @@ class RAGEngine:
             raise ValueError("Pergunta não pode estar vazia")
         
         if self.index is None or self._query_engine is None:
-            raise RuntimeError(
-                "Nenhum documento indexado. "
-                "Chame index_documents() primeiro."
-            )
+            return "Minha base de conhecimento está vazia no momento. Por favor, faça o upload de alguns documentos nas configurações para que eu possa ajudá-lo com informações específicas!"
         
         self.logger.info(f"Query: {question[:50]}...")
         
@@ -426,7 +437,7 @@ class RAGEngine:
             RuntimeError: Se não houver documentos indexados.
         """
         if self.index is None:
-            raise RuntimeError("Nenhum documento indexado")
+            return "Minha base de conhecimento está vazia no momento. Por favor, faça o upload de alguns documentos nas configurações para que eu possa ajudá-lo com informações específicas!"
         
         if reset:
             self.clear_chat_memory()
@@ -451,30 +462,56 @@ class RAGEngine:
         return str(response)
     
     def clear_index(self) -> None:
-        """Limpa o índice de documentos e memória associada.
-        
-        Remove todos os documentos indexados e reseta o estado
-        do motor para permitir nova indexação.
-        
-        Example:
-            >>> engine.clear_index()
-            >>> print(engine.index)  # None
-        """
+        """Limpa o índice de documentos e memória associada."""
         self.index = None
         self._query_engine = None
         self.clear_chat_memory()
         
-        # Limpa também do banco de dados (recria a coleção)
-        if hasattr(self, 'chroma_client'):
-            try:
-                self.chroma_client.delete_collection("hermes_documents")
-                self.chroma_collection = self.chroma_client.get_or_create_collection("hermes_documents")
-                self.vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
-                self.storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
-            except Exception as e:
-                self.logger.error(f"Erro ao limpar banco de dados: {e}")
-                
-        self.logger.info("Índice limpo")
+        # Limpa do banco de dados (recria a coleção)
+        try:
+            # Se não tiver o cliente ainda, inicializa
+            if not hasattr(self, 'chroma_client'):
+                self.chroma_client = chromadb.HttpClient(
+                    host=self.config.chroma_host, 
+                    port=self.config.chroma_port
+                )
+            
+            self.chroma_client.delete_collection("hermes_documents")
+            self.chroma_collection = self.chroma_client.get_or_create_collection("hermes_documents")
+            self.vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
+            self.storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
+            self.logger.info("Banco de dados ChromaDB limpo com sucesso")
+        except Exception as e:
+            self.logger.error(f"Erro ao limpar ChromaDB: {e}")
+
+    def delete_document(self, file_name: str) -> bool:
+        """Deleta todos os chunks associados a um arquivo específico.
+        
+        Args:
+            file_name: Nome do arquivo a ser deletado.
+            
+        Returns:
+            bool: True se a deleção foi bem sucedida.
+        """
+        try:
+            self.logger.info(f"Deletando documento: {file_name}")
+            # Deleta da coleção do ChromaDB usando metadados
+            self.chroma_collection.delete(
+                where={"file_name": file_name}
+            )
+            
+            # Recarrega o índice para refletir a mudança
+            # (Em um sistema maior usaríamos index.delete_nodes, mas aqui recriar do banco é mais seguro)
+            self.index = VectorStoreIndex.from_vector_store(
+                self.vector_store, 
+                storage_context=self.storage_context
+            )
+            self._query_engine = self.index.as_query_engine()
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Erro ao deletar documento {file_name}: {e}")
+            return False
     
     def clear_chat_memory(self) -> None:
         """Limpa a memória de conversa.

@@ -34,7 +34,7 @@ class PDFDocumentLoader:
         >>> print(f"Carregadas {len(docs)} páginas")
     """
     
-    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".png", ".jpg", ".jpeg"}
+    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".png", ".jpg", ".jpeg", ".txt"}
     
     def __init__(self, config: Optional[RAGConfig] = None):
         """Inicializa o carregador de documentos.
@@ -128,6 +128,23 @@ class PDFDocumentLoader:
                 return self._post_process_docs(documents, file_path, "pymupdf", extra_metadata)
             except Exception as e:
                 self.logger.error(f"Erro no PyMuPDF: {e}")
+        
+        # --- OPÇÃO 4: Leitor de Texto Puro (.txt) ---
+        if suffix == ".txt":
+            try:
+                self.logger.info(f"Usando leitor de texto puro para: {file_path.name}")
+                # Tenta ler com UTF-8, cai para latin-1 se falhar
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        text = f.read()
+                except UnicodeDecodeError:
+                    with open(file_path, "r", encoding="latin-1") as f:
+                        text = f.read()
+                        
+                documents = [Document(text=text)]
+                return self._post_process_docs(documents, file_path, "txt_reader", extra_metadata)
+            except Exception as e:
+                self.logger.error(f"Erro ao ler arquivo TXT: {e}")
 
         return []
 
