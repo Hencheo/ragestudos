@@ -46,41 +46,12 @@ export default function SidebarMenu({
         </motion.button>
       </div>
 
-      {/* 2. MIDDLE: Contextos / Assuntos */}
+      {/* 2. MIDDLE: Contextos / Assuntos - Agora movidos para o dropdown do header */}
       <div className="flex-1 overflow-y-auto px-3 mt-4 space-y-1 custom-scrollbar">
-        <div className="text-[10px] font-bold text-[#555] px-3 uppercase tracking-[0.1em] mb-2 flex items-center justify-between">
-          <span>Contextos Ativos</span>
-          <Activity size={10} className="text-green-500 animate-pulse" />
-        </div>
         
-        <button
-          onClick={() => onSelectSubject(null)}
-          className={`w-full flex items-center justify-between group px-3 py-2.5 rounded-lg text-sm transition-all bg-transparent ${
-            selectedSubject === null ? "bg-[#2f2f2f] text-white shadow-inner" : "text-[#999] hover:bg-[#222] hover:text-[#ccc]"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Database size={16} className={selectedSubject === null ? "text-blue-400" : "text-[#555]"} />
-            <span>Base Global</span>
-          </div>
-          {selectedSubject === null && <ChevronRight size={14} className="opacity-50" />}
-        </button>
+        {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
 
-        {subjects.map((subject) => (
-          <button
-            key={subject}
-            onClick={() => onSelectSubject(subject)}
-            className={`w-full flex items-center justify-between group px-3 py-2.5 rounded-lg text-sm transition-all ${
-              selectedSubject === subject ? "bg-[#2f2f2f] text-white shadow-inner" : "text-[#999] hover:bg-[#222] hover:text-[#ccc]"
-            }`}
-          >
-            <div className="flex items-center gap-3 truncate">
-              <MessageSquare size={16} className={selectedSubject === subject ? "text-green-400" : "text-[#555]"} />
-              <span className="truncate">{subject}</span>
-            </div>
-            {selectedSubject === subject && <ChevronRight size={14} className="opacity-50" />}
-          </button>
-        ))}
+        {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
 
         {subjects.length === 0 && (
           <div className="px-3 py-4 text-[12px] text-[#444] text-center italic">

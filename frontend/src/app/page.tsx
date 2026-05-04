@@ -55,7 +55,9 @@ export default function Home() {
         messages={messages}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        subjects={subjects}
         selectedSubject={selectedSubject}
+        onSelectSubject={setSelectedSubject}
       />
     </main>
   );
