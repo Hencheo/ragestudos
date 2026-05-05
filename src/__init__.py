@@ -12,9 +12,9 @@ Version:
     1.0.0
 """
 
-from src.config import RAGConfig
-from src.rag_engine import RAGEngine
-from src.document_loader import PDFDocumentLoader
+from .config import RAGConfig
+from .rag_engine import RAGEngine
+from .document_loader import PDFDocumentLoader
 
 __version__ = "1.0.0"
 __all__ = ["RAGConfig", "RAGEngine", "PDFDocumentLoader"]

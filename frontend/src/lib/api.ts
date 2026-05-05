@@ -22,10 +22,11 @@ export async function queryHermes(question: string, subject?: string) {
   });
 }
 
-export async function uploadFiles(files: File[], subject: string) {
+export async function uploadFiles(files: File[], subject: string, useOcr: boolean = true) {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   formData.append("subject", subject);
+  formData.append("use_ocr", String(useOcr));
 
   return safeFetch(`${API_URL}/upload`, {
     method: "POST",
@@ -40,3 +41,12 @@ export async function getStats() {
 export async function clearDatabase() {
   return safeFetch(`${API_URL}/clear`, { method: "POST" });
 }
+
+export async function getUploadStatus(taskId: string) {
+  return safeFetch(`${API_URL}/upload/status/${taskId}`);
+}
+
+export async function cancelUpload(taskId: string) {
+  return safeFetch(`${API_URL}/upload/cancel/${taskId}`, { method: "POST" });
+}
+

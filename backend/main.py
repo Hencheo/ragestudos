@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 import uvicorn
@@ -8,15 +8,20 @@ import sys
 # Adiciona a raiz do projeto ao path para importar de src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import logging
 from src.services import HermesService
 from src.config import RAGConfig
+from src.utils.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Hermes RAG API")
 
-# Configuração de CORS para permitir que o Next.js acesse a API
+# ... (CORS configuration remains the same)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Em produção, especifique a URL do frontend
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,20 +46,50 @@ def get_stats():
     return service.get_database_stats()
 
 @app.post("/upload")
-def upload_files(
+async def upload_files(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...), 
-    subject: str = Form("")
+    subject: str = Form(""),
+    use_ocr: bool = Form(True)
 ):
     if not service:
         raise HTTPException(status_code=500, detail="Serviço não inicializado")
     
     files_data = []
+    print(f"📥 Recebendo {len(files)} arquivos para indexação (Assunto: {subject}, OCR: {use_ocr})...")
     for file in files:
-        content = file.file.read()
+        content = await file.read()
         files_data.append({"name": file.filename, "content": content})
     
-    result = service.process_and_index_files(files_data, subject)
-    return result
+    # Cria uma tarefa no TaskManager
+    task_id = TaskManager.create_task(total_files=len(files), subject=subject)
+    
+    # Agenda o processamento em background
+    background_tasks.add_task(run_upload_task, task_id, files_data, subject, use_ocr)
+    
+    return {"success": True, "task_id": task_id, "message": "Upload recebido. Processamento iniciado em segundo plano."}
+
+def run_upload_task(task_id: str, files_data: list, subject: str, use_ocr: bool):
+    """Função que roda em background para processar os arquivos."""
+    try:
+        service.process_and_index_files(files_data, subject, task_id=task_id, use_ocr=use_ocr)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        TaskManager.update_task(task_id, status="failed", message=f"Erro fatal: {str(e)}")
+
+@app.get("/upload/status/{task_id}")
+def get_upload_status(task_id: str):
+    task = TaskManager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    return task
+    
+@app.post("/upload/cancel/{task_id}")
+def cancel_upload(task_id: str):
+    TaskManager.cancel_task(task_id)
+    return {"success": True, "message": "Solicitação de cancelamento enviada."}
+
 
 @app.post("/query")
 def query_rag(
@@ -69,8 +104,10 @@ def query_rag(
         
     try:
         response = service.ask_question(question, subject_filter=subject)
+        logger.info(f"Resposta gerada para '{question[:30]}...': {len(response)} caracteres")
         return {"response": response}
     except Exception as e:
+        logger.error(f"Erro na query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/clear")

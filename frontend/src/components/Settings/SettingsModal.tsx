@@ -7,6 +7,7 @@ import {
   X, Settings, Database, Cpu, Trash2, Upload, 
   Check, AlertCircle, FileText, Globe, Palette 
 } from "lucide-react";
+import { uploadFiles, getUploadStatus, cancelUpload } from "@/lib/api";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,7 +20,6 @@ type Tab = "geral" | "dados" | "documentos" | "motor";
 
 export default function SettingsModal({ isOpen, onClose, subjects, initialTab = "geral" }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sincroniza a aba quando o modal abre
@@ -59,8 +59,6 @@ export default function SettingsModal({ isOpen, onClose, subjects, initialTab = 
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="relative w-full max-w-[840px] h-[600px] bg-[#171717] border border-[#333] rounded-2xl shadow-2xl overflow-hidden flex"
         >
-          {/* Botão Fechar removido da posição absoluta para evitar sobreposição */}
-
           {/* SIDEBAR DO MODAL */}
           <aside className="w-64 bg-[#121212] border-r border-[#333] p-4 flex flex-col gap-1">
             <div className="px-3 py-4 mb-2">
@@ -96,9 +94,8 @@ export default function SettingsModal({ isOpen, onClose, subjects, initialTab = 
             />
           </aside>
 
-          {/* ÁREA DE CONTEÚDO COM HEADER DEDICADO */}
+          {/* ÁREA DE CONTEÚDO */}
           <div className="flex-1 flex flex-col bg-[#171717]">
-            {/* Header Interno para o Botão Fechar */}
             <header className="h-16 flex items-center justify-end px-6 shrink-0 border-b border-[#333]/30">
               <button 
                 onClick={onClose}
@@ -109,7 +106,6 @@ export default function SettingsModal({ isOpen, onClose, subjects, initialTab = 
               </button>
             </header>
 
-            {/* Conteúdo da Aba */}
             <main className="flex-1 overflow-y-auto p-8 pt-6">
               {activeTab === "geral" && <GeralTab />}
               {activeTab === "dados" && <UploadTab />}
@@ -171,6 +167,10 @@ function UploadTab() {
   const [success, setSuccess] = useState(false);
   const [subject, setSubject] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [useOcr, setUseOcr] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,7 +179,47 @@ function UploadTab() {
       setSelectedFiles(Array.from(files));
       setError(null);
       setSuccess(false);
+      setProgress(0);
+      setStatusMessage("");
     }
+  };
+
+  const pollStatus = async (taskId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const statusData = await getUploadStatus(taskId);
+        setProgress(statusData.progress);
+        setStatusMessage(statusData.message);
+
+        if (statusData.status === "completed") {
+          clearInterval(interval);
+          setUploading(false);
+          setSuccess(true);
+          setSelectedFiles([]);
+          setSubject("");
+          setCurrentTaskId(null);
+          setTimeout(() => {
+            setSuccess(false);
+            setProgress(0);
+            setStatusMessage("");
+          }, 5000);
+        } else if (statusData.status === "failed" || statusData.status === "cancelled") {
+          clearInterval(interval);
+          setUploading(false);
+          if (statusData.status === "cancelled") {
+            setError("Processamento interrompido pelo usuário.");
+          } else {
+            setError(statusData.message || "Falha no processamento");
+          }
+          setCurrentTaskId(null);
+        }
+      } catch (err) {
+        console.error("Erro ao consultar status:", err);
+        clearInterval(interval);
+        setUploading(false);
+        setError("Erro ao monitorar o progresso.");
+      }
+    }, 1000);
   };
 
   const handleConfirmUpload = async () => {
@@ -187,105 +227,141 @@ function UploadTab() {
     setUploading(true);
     setError(null);
     setSuccess(false);
-
-    const formData = new FormData();
-    selectedFiles.forEach(file => formData.append("files", file));
-    formData.append("subject", subject);
+    setProgress(0);
+    setStatusMessage("Enviando arquivos...");
 
     try {
-      const response = await fetch("http://localhost:8000/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Falha no upload");
+      const data = await uploadFiles(selectedFiles, subject, useOcr);
+      if (data.success && data.task_id) {
+        setCurrentTaskId(data.task_id);
+        pollStatus(data.task_id);
+      } else {
+        throw new Error(data.message || "Falha ao iniciar upload");
       }
-      setSuccess(true);
-      setSelectedFiles([]);
-      setSubject("");
     } catch (err: any) {
       setError(err.message || "Erro ao enviar arquivos.");
-    } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!currentTaskId) return;
+    try {
+      await cancelUpload(currentTaskId);
+      setStatusMessage("Cancelamento solicitado...");
+    } catch (err) {
+      console.error("Erro ao cancelar:", err);
+      setError("Erro ao solicitar cancelamento.");
     }
   };
 
   return (
     <div className="space-y-8">
       <section>
-        <h3 className="text-xl font-medium text-white mb-6">Upload de Conhecimento</h3>
-        <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl p-6 mb-8 space-y-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-medium text-white">Upload de Conhecimento</h3>
+          {uploading && (
+             <button 
+               onClick={handleCancel}
+               title="Clique para interromper o processamento atual"
+               className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-full hover:bg-red-500/20 transition-all group/stop"
+             >
+               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse group-hover/stop:scale-125 transition-transform" />
+               <span className="text-[10px] font-bold text-red-400 uppercase tracking-tighter">Interromper Processo</span>
+             </button>
+          )}
+        </div>
+
+        <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl p-6 mb-8 space-y-6 relative overflow-hidden">
+          {uploading && (
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              className="absolute top-0 left-0 h-1 bg-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.5)] z-10"
+            />
+          )}
+
           <div className="space-y-2">
-            <label className="text-xs font-bold text-[#666] uppercase tracking-widest">
-              Assunto / Etiqueta de Contexto
-            </label>
+            <label className="text-xs font-bold text-[#666] uppercase tracking-widest">Assunto / Etiqueta de Contexto</label>
             <input 
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Ex: Currículos, Finanças, Projetos..."
-              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 transition-all outline-none"
+              disabled={uploading}
+              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500/50 transition-all outline-none disabled:opacity-50"
             />
           </div>
 
+          <div className="flex items-center justify-between p-4 bg-[#171717] rounded-xl border border-[#333]">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${useOcr ? "bg-blue-500/10 text-blue-400" : "bg-[#2a2a2a] text-[#555]"}`}>
+                <Cpu size={16} />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-white">Usar OCR (Docling AI)</div>
+                <div className="text-[10px] text-[#555] uppercase tracking-tighter">Ative para ler documentos escaneados ou imagens</div>
+              </div>
+            </div>
+            <button 
+              onClick={() => setUseOcr(!useOcr)}
+              disabled={uploading}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${useOcr ? "bg-blue-600" : "bg-[#333]"}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useOcr ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
+
           <div className="flex items-center gap-4">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={onFileSelect} 
-              multiple 
-              accept=".pdf,.txt" 
-              className="hidden" 
-            />
+            <input type="file" ref={fileInputRef} onChange={onFileSelect} multiple accept=".pdf,.txt" className="hidden" disabled={uploading} />
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-[#2a2a2a] text-white rounded-lg text-sm font-medium hover:bg-[#333] transition-all"
+              disabled={uploading}
+              className="flex items-center gap-2 px-4 py-2 bg-[#2a2a2a] text-white rounded-lg text-sm font-medium hover:bg-[#333] transition-all disabled:opacity-50"
             >
               <Upload size={16} />
               Selecionar Arquivos (.pdf, .txt)
             </button>
-            {selectedFiles.length > 0 && (
-              <span className="text-xs text-[#666]">
-                {selectedFiles.length} arquivo(s) selecionado(s)
-              </span>
+            {selectedFiles.length > 0 && !uploading && (
+              <span className="text-xs text-[#666]">{selectedFiles.length} arquivo(s) selecionado(s)</span>
             )}
           </div>
 
-          {selectedFiles.length > 0 && (
-            <div className="pt-4 border-t border-[#333]/50">
-              <button 
-                onClick={handleConfirmUpload}
-                disabled={uploading}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                  uploading 
-                    ? "bg-[#333] text-[#555] cursor-not-allowed" 
-                    : "bg-white text-black hover:scale-[1.02] active:scale-[0.98]"
-                }`}
-              >
-                {uploading ? (
-                  <div className="w-4 h-4 border-2 border-[#555] border-t-white rounded-full animate-spin" />
-                ) : (
+          {(selectedFiles.length > 0 || uploading) && (
+            <div className="pt-4 border-t border-[#333]/50 space-y-4">
+              {uploading && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                    <span className="text-blue-400 animate-pulse">{statusMessage}</span>
+                    <span className="text-[#666]">{progress}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-[#171717] rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-gradient-to-r from-blue-600 to-blue-400" />
+                  </div>
+                </div>
+              )}
+              {!uploading && (
+                <button onClick={handleConfirmUpload} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white text-black rounded-xl text-sm font-bold transition-all hover:scale-[1.01] active:scale-[0.98]">
                   <Check size={18} />
-                )}
-                {uploading ? "Indexando Documentos..." : "Confirmar e Indexar Agora"}
-              </button>
+                  Confirmar e Indexar Agora
+                </button>
+              )}
             </div>
           )}
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-red-400 text-xs flex items-center gap-3">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-4 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-red-400 text-xs flex items-center gap-3">
             <AlertCircle size={18} className="shrink-0" />
             <span>{error}</span>
-          </div>
+          </motion.div>
         )}
 
         {success && (
-          <div className="mb-4 p-4 bg-green-500/5 border border-green-500/20 rounded-2xl text-green-400 text-xs flex items-center gap-3">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-4 p-4 bg-green-500/5 border border-green-500/20 rounded-2xl text-green-400 text-xs flex items-center gap-3">
             <Check size={18} className="shrink-0" />
             <span>Arquivos indexados com sucesso!</span>
-          </div>
+          </motion.div>
         )}
       </section>
     </div>
@@ -364,10 +440,7 @@ function DocumentosTab() {
                       <div className="text-[10px] text-[#555]">Assunto: {info.subject} • {info.chunks} trechos</div>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteFile(name)}
-                    className="p-2 text-[#444] hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                  >
+                  <button onClick={() => handleDeleteFile(name)} className="p-2 text-[#444] hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -415,16 +488,11 @@ function MotorTab() {
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
-    
     const formData = new FormData();
     formData.append("llm_provider", llmProvider);
     formData.append("model_name", modelName);
-
     try {
-      const res = await fetch("http://localhost:8000/config", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("http://localhost:8000/config", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Falha ao salvar configuração");
       setMessage({ type: 'success', text: "Configuração do motor atualizada com sucesso!" });
     } catch (err) {
@@ -444,54 +512,32 @@ function MotorTab() {
     <div className="space-y-8">
       <section>
         <h3 className="text-xl font-medium text-white mb-6">Motor de Inteligência</h3>
-        
         <div className="bg-[#1f1f1f] border border-[#333] rounded-2xl p-6 space-y-6">
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#666] uppercase tracking-widest">Provedor de LLM</label>
-            <select 
-              value={llmProvider}
-              onChange={(e) => {
-                const p = e.target.value;
-                setLlmProvider(p);
-                const firstModel = providers.find(pr => pr.name === p)?.models[0];
-                if (firstModel) setModelName(firstModel);
-              }}
-              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
-            >
+            <select value={llmProvider} onChange={(e) => {
+              const p = e.target.value;
+              setLlmProvider(p);
+              const firstModel = providers.find(pr => pr.name === p)?.models[0];
+              if (firstModel) setModelName(firstModel);
+            }} className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50">
               {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
             </select>
           </div>
-
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#666] uppercase tracking-widest">Modelo Específico</label>
-            <select 
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50"
-            >
-              {providers.find(p => p.name === llmProvider)?.models.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
+            <select value={modelName} onChange={(e) => setModelName(e.target.value)} className="w-full bg-[#171717] border border-[#333] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50">
+              {providers.find(p => p.name === llmProvider)?.models.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
-
           <div className="pt-4 border-t border-[#333]/50">
-            <button 
-              onClick={handleSave}
-              disabled={saving}
-              className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${
-                saving ? "bg-[#333] text-[#555]" : "bg-white text-black hover:scale-[1.01]"
-              }`}
-            >
+            <button onClick={handleSave} disabled={saving} className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${saving ? "bg-[#333] text-[#555]" : "bg-white text-black hover:scale-[1.01]"}`}>
               {saving ? "Salvando Alterações..." : "Aplicar Configurações do Motor"}
             </button>
           </div>
         </div>
-
         {message && (
-          <div className={`mt-4 p-4 rounded-2xl text-xs flex items-center gap-3 ${
-            message.type === 'success' ? "bg-green-500/5 border border-green-500/20 text-green-400" : "bg-red-500/5 border border-red-500/20 text-red-400"
-          }`}>
+          <div className={`mt-4 p-4 rounded-2xl text-xs flex items-center gap-3 ${message.type === 'success' ? "bg-green-500/5 border border-green-500/20 text-green-400" : "bg-red-500/5 border border-red-500/20 text-red-400"}`}>
             {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
             <span>{message.text}</span>
           </div>
@@ -500,8 +546,6 @@ function MotorTab() {
     </div>
   );
 }
-
-// --- UTILS INTERNOS ---
 
 function SettingItem({ icon, title, description, action }: { icon: React.ReactNode, title: string, description: string, action: React.ReactNode }) {
   return (
@@ -529,18 +573,7 @@ function Select({ value, options }: { value: string, options: string[] }) {
 
 function ChevronDown({ size, className }: { size: number, className: string }) {
   return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="m6 9 6 6 6-6"/>
     </svg>
   );

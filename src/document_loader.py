@@ -5,6 +5,7 @@ conteúdo de arquivos PDF e convertê-los em documentos LlamaIndex.
 """
 
 import logging
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -13,6 +14,8 @@ import fitz  # PyMuPDF
 from llama_parse import LlamaParse
 
 from .config import RAGConfig
+from PIL import Image, ImageOps, ImageEnhance
+import io
 
 # Configuração de logging
 logger = logging.getLogger(__name__)
@@ -66,15 +69,60 @@ class PDFDocumentLoader:
             if config.use_docling:
                 try:
                     from llama_index.readers.docling import DoclingReader
+                    from docling.datamodel.base_models import InputFormat
+                    from docling.document_converter import DocumentConverter, PdfFormatOption
+                    from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
+                    
                     self.logger.info("Inicializando DoclingReader (Local Premium)")
-                    self._docling_reader = DoclingReader()
+                    
+                    # Configuração para evitar deadlocks em ambientes multi-processo
+                    import os
+                    os.environ["OMP_NUM_THREADS"] = "1"
+                    os.environ["MKL_NUM_THREADS"] = "1"
+                    
+                    # Configuração avançada do Docling para melhorar OCR
+
+                    pipeline_options = PdfPipelineOptions()
+                    pipeline_options.do_ocr = True
+                    pipeline_options.images_scale = 1.5  # Escala equilibrada para performance e precisão
+                    
+                    # Foco em Espanhol e Inglês para o dicionário Ticuna
+                    pipeline_options.ocr_options = RapidOcrOptions(lang=["es", "en"])
+                    pipeline_options.ocr_options.force_full_page_ocr = False
+                    pipeline_options.ocr_options.text_score = 0.4
+                    
+                    # Cria o conversor com opções customizadas
+                    converter = DocumentConverter(
+                        format_options={
+                            InputFormat.PDF: PdfFormatOption(
+                                pipeline_options=pipeline_options
+                            )
+                        }
+                    )
+                    
+                    self._docling_reader = DoclingReader(doc_converter=converter)
+
+                    # Cria um conversor secundário sem OCR para máxima velocidade
+                    pipeline_options_no_ocr = PdfPipelineOptions()
+                    pipeline_options_no_ocr.do_ocr = False
+                    converter_no_ocr = DocumentConverter(
+                        format_options={
+                            InputFormat.PDF: PdfFormatOption(
+                                pipeline_options=pipeline_options_no_ocr
+                            )
+                        }
+                    )
+                    self._docling_reader_no_ocr = DoclingReader(doc_converter=converter_no_ocr)
+                    
                 except (ImportError, Exception) as e:
                     self.logger.warning(f"Erro ao carregar DoclingReader: {e}. Fallback para PyMuPDF.")
     
     def load_pdf(
         self, 
         file_path: Union[str, Path],
-        extra_metadata: Optional[dict] = None
+        extra_metadata: Optional[dict] = None,
+        progress_callback: Optional[callable] = None,
+        use_ocr: bool = True
     ) -> List[Document]:
         """Carrega um arquivo e retorna lista de Documentos.
         
@@ -92,11 +140,32 @@ class PDFDocumentLoader:
         
         self.logger.info(f"Processando arquivo: {file_path}")
         
+        if progress_callback:
+            progress_callback(5, f"Iniciando extração de {file_path.name}...")
+
+        # --- TRATAMENTO PRÉ-DOCLING (Para Imagens) ---
+        if self.config and self.config.use_image_treatment and suffix in {".png", ".jpg", ".jpeg"}:
+            try:
+                self.logger.info(f"Aplicando tratamento de imagem em: {file_path.name}")
+                if progress_callback:
+                    progress_callback(15, "Tratando imagem para melhorar OCR...")
+                with open(file_path, "rb") as f:
+                    content = f.read()
+                treated_content = self._preprocess_image_data(content)
+                with open(file_path, "wb") as f:
+                    f.write(treated_content)
+            except Exception as e:
+                self.logger.warning(f"Erro ao tratar imagem {file_path.name}: {e}")
+
         # --- OPÇÃO 1: LlamaParse (Nuvem) ---
         if self._llama_parser:
             try:
                 self.logger.info(f"Usando LlamaParse para: {file_path.name}")
+                if progress_callback:
+                    progress_callback(10, "Enviando para LlamaParse (Cloud)...")
                 documents = self._llama_parser.load_data(str(file_path))
+                if progress_callback:
+                    progress_callback(90, "Extração LlamaParse concluída.")
                 return self._post_process_docs(documents, file_path, "llama_parse", extra_metadata)
             except Exception as e:
                 self.logger.error(f"Erro no LlamaParse: {e}")
@@ -104,11 +173,68 @@ class PDFDocumentLoader:
         # --- OPÇÃO 2: Docling (Local Premium) ---
         if self._docling_reader:
             try:
-                self.logger.info(f"Usando Docling para: {file_path.name}")
-                documents = self._docling_reader.load_data(str(file_path))
-                return self._post_process_docs(documents, file_path, "docling", extra_metadata)
+                import fitz
+                from docling.datamodel.base_models import InputFormat
+                from llama_index.readers.docling import DoclingReader
+                
+                # Seleciona o leitor (com ou sem OCR)
+                reader = self._docling_reader if use_ocr else self._docling_reader_no_ocr
+                
+                self.logger.info(f"Usando Docling (OCR: {use_ocr}) para: {file_path.name}")
+                
+                # Abre o PDF para contar páginas e processar individualmente
+                doc_pdf = fitz.open(str(file_path))
+                total_pages = len(doc_pdf)
+                self.logger.info(f"Documento tem {total_pages} páginas.")
+                
+                all_documents = []
+                
+                for i in range(total_pages):
+                    page_num = i + 1
+                    # Calcula progresso relativo (entre 15% e 80%)
+                    rel_progress = 15 + int((i / total_pages) * 65)
+                    
+                    if progress_callback:
+                        progress_callback(rel_progress, f"Analisando página {page_num} de {total_pages}...")
+                    
+                    # Extrai apenas uma página para um PDF temporário
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_page:
+                        single_page_doc = fitz.open()
+                        single_page_doc.insert_pdf(doc_pdf, from_page=i, to_page=i)
+                        single_page_doc.save(tmp_page.name)
+                        single_page_doc.close()
+                        tmp_page_path = tmp_page.name
+                    
+                    try:
+                        # Processa apenas esta página com Docling
+                        page_docs = reader.load_data(tmp_page_path)
+                        
+                        # Ajusta o número da página nos metadados
+                        for d in page_docs:
+                            d.metadata["page_number"] = page_num
+                        
+                        all_documents.extend(page_docs)
+                    finally:
+                        Path(tmp_page_path).unlink(missing_ok=True)
+
+                doc_pdf.close()
+                
+                if progress_callback:
+                    progress_callback(80, "Processamento de todas as páginas concluído.")
+                
+                return self._post_process_docs(all_documents, file_path, "docling", extra_metadata)
+                
             except Exception as e:
-                self.logger.error(f"Erro no Docling: {e}")
+                self.logger.error(f"Erro no Docling Cirúrgico: {e}")
+                # Fallback para o modo padrão se o modo cirúrgico falhar
+                try:
+                    self.logger.info("Tentando modo Docling padrão como fallback...")
+                    documents = reader.load_data(str(file_path))
+                    return self._post_process_docs(documents, file_path, "docling", extra_metadata)
+                except Exception as inner_e:
+                    self.logger.error(f"Erro no Docling Fallback: {inner_e}")
+
+
 
         # --- OPÇÃO 3: PyMuPDF (Fallback apenas para PDF) ---
         if suffix == ".pdf":
@@ -147,6 +273,33 @@ class PDFDocumentLoader:
                 self.logger.error(f"Erro ao ler arquivo TXT: {e}")
 
         return []
+
+    def _preprocess_image_data(self, image_bytes: bytes) -> bytes:
+        """Aplica 'tratamento' na imagem para melhorar o OCR.
+        
+        Converte para tons de cinza, aumenta contraste e nitidez.
+        """
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            
+            # 1. Converter para escala de cinza
+            img = ImageOps.grayscale(img)
+            
+            # 2. Aumentar contraste
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(2.0)
+            
+            # 3. Aumentar nitidez
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(1.5)
+            
+            # Salva de volta para bytes
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='PNG')
+            return img_byte_arr.getvalue()
+        except Exception as e:
+            self.logger.warning(f"Falha no pré-processamento da imagem: {e}")
+            return image_bytes
 
     def _post_process_docs(
         self, 

@@ -5,7 +5,7 @@ de documentos e a geração de respostas usando LlamaIndex e Google Gemini.
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional, List, Any, Dict, Union
 
 import chromadb
 from llama_index.core import Document, Settings, VectorStoreIndex, StorageContext
@@ -20,7 +20,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
 from llama_index.core.postprocessor import LLMRerank
 
-from src.config import RAGConfig
+from .config import RAGConfig
 
 # Configuração de logging
 logger = logging.getLogger(__name__)
@@ -57,7 +57,11 @@ class RAGEngine:
         """
         if not api_key:
             raise ValueError("API key é obrigatória")
-        
+    def __init__(
+        self, 
+        config: RAGConfig, 
+        api_key: Optional[str] = None
+    ):
         self.api_key = api_key
         self.config = config
         self.index: Optional[VectorStoreIndex] = None
@@ -135,13 +139,24 @@ class RAGEngine:
         try:
             provider = self.config.llm_provider.lower()
             
-            if "openai" in provider:
+            # Detecta se é um modelo da Fireworks mesmo que o provedor esteja como 'openai'
+            is_fireworks_model = "fireworks" in self.config.model_name.lower()
+            
+            if is_fireworks_model or "fireworks" in provider:
+                from llama_index.llms.fireworks import Fireworks
+                api_key = self.config.fireworks_api_key or self.api_key
+                llm = Fireworks(
+                    model=self.config.model_name,
+                    api_key=api_key,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+            elif "openai" in provider:
                 from llama_index.llms.openai import OpenAI
                 api_key = self.config.openai_api_key or self.api_key
                 llm = OpenAI(
                     model=self.config.model_name,
                     api_key=api_key,
-                    api_base=self.config.llm_api_base,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
                     system_prompt=self.config.system_prompt,
@@ -176,8 +191,8 @@ class RAGEngine:
         try:
             embedding_model_name = self.config.embedding_model
             
-            # Se o modelo for da OpenAI ou o provedor for OpenAI
-            if "text-embedding-" in embedding_model_name or self.config.llm_provider == "OpenAI":
+            # Se o modelo for da OpenAI ou o provedor for OpenAI (case-insensitive)
+            if "text-embedding-" in embedding_model_name or self.config.llm_provider.lower() == "openai":
                 from llama_index.embeddings.openai import OpenAIEmbedding
                 
                 # Usa a chave da OpenAI se disponível, senão tenta a chave geral
@@ -243,15 +258,17 @@ class RAGEngine:
                     self.index = VectorStoreIndex.from_vector_store(
                         self.vector_store,
                     )
+                    
+                    from llama_index.core.postprocessor import LLMRerank
+                    reranker = LLMRerank(top_n=5, llm=Settings.llm)
+                    
                     self._query_engine = self.index.as_query_engine(
-                        similarity_top_k=10, # Traz mais candidatos para o Rerank
-                        node_postprocessors=[
-                            LLMRerank(choice_batch_size=5, top_n=3)
-                        ],
+                        similarity_top_k=20,
                         response_mode="compact",
+                        node_postprocessors=[reranker],
                         verbose=False,
                     )
-                    self.logger.info(f"Índice carregado do banco de dados ({self.chroma_collection.count()} chunks) com Reranking ativo")
+                    self.logger.info(f"Índice carregado do banco de dados ({self.chroma_collection.count()} chunks)")
                 else:
                     self.logger.info("Coleção vazia no banco de dados. Índice não carregado.")
             except Exception as inner_e:
@@ -261,6 +278,58 @@ class RAGEngine:
         except Exception as e:
             self.logger.error(f"Erro ao configurar banco de dados: {e}")
             raise
+
+    def _get_keyword_nodes(self, query: str, limit: int = 10) -> List[Any]:
+        """Busca nós que contêm palavras-chave da query usando busca exata de texto.
+        
+        Isso ajuda a encontrar termos raros ou com grafia específica (ex: Ticuna)
+        que a busca semântica por vetores pode ignorar.
+        """
+        import re
+        # Extrai palavras com mais de 3 caracteres, ignorando termos comuns (PT e ES)
+        words = re.findall(r'\w+', query.lower())
+        stop_words = {
+            'significa', 'quem', 'onde', 'como', 'quais', 'quando', 'sobre', 'texto', 'documento',
+            'fala', 'quer', 'quiser', 'falar', 'dizer', 'você', 'pode', 'ajudar', 'qual', 'quais',
+            'para', 'com', 'pelo', 'pela', 'está', 'este', 'esta', 'esse', 'essa', 'isso', 'aquilo',
+            'como', 'pero', 'para', 'este', 'esta', 'esto', 'significa', 'dice', 'habla'
+        }
+        keywords = [w for w in words if len(w) > 3 and w not in stop_words]
+        
+        if not keywords:
+            self.logger.info("Nenhuma palavra-chave relevante encontrada na query.")
+            return []
+            
+        self.logger.info(f"Busca Híbrida - Palavras-chave extraídas: {keywords}")
+        
+        found_nodes = []
+        seen_ids = set()
+        
+        try:
+            for kw in keywords:
+                # Busca no ChromaDB usando o operador $contains
+                results = self.chroma_collection.get(
+                    where_document={"$contains": kw},
+                    limit=limit
+                )
+                
+                if results and results['ids']:
+                    for i, doc_id in enumerate(results['ids']):
+                        if doc_id not in seen_ids:
+                            from llama_index.core.schema import TextNode, NodeWithScore
+                            node = TextNode(
+                                text=results['documents'][i],
+                                id_=doc_id,
+                                metadata=results['metadatas'][i]
+                            )
+                            # Atribui um score alto para busca por palavra-chave
+                            found_nodes.append(NodeWithScore(node=node, score=0.9))
+                            seen_ids.add(doc_id)
+            
+            return found_nodes
+        except Exception as e:
+            self.logger.warning(f"Erro na busca por palavras-chave: {e}")
+            return []
     
     def _init_chat_memory(self) -> ChatMemoryBuffer:
         """Inicializa o buffer de memória de chat.
@@ -313,34 +382,49 @@ class RAGEngine:
                     doc.metadata[key] = str(value)
         
         try:
-            if self.index is not None:
-                self.logger.info("Adicionando novos documentos ao índice existente...")
-                for doc in documents:
-                    self.index.insert(doc)
-            else:
-                self.logger.info("Criando novo índice vetorial...")
-                self.index = VectorStoreIndex.from_documents(
-                    documents,
-                    storage_context=self.storage_context,
-                    show_progress=show_progress,
-                )
+            # LlamaIndex pode falhar se enviarmos muitos documentos de uma vez (Payload too large)
+            # Vamos processar em batches menores para garantir estabilidade
+            batch_size = 50
+            total_docs = len(documents)
+            
+            for i in range(0, total_docs, batch_size):
+                batch = documents[i : i + batch_size]
+                self.logger.info(f"Processando batch {i//batch_size + 1} ({len(batch)} documentos)...")
+                
+                if self.index is not None:
+                    # Se o índice já existe, inserimos os documentos um a um ou em batch
+                    for doc in batch:
+                        self.index.insert(doc)
+                else:
+                    # Se o índice não existe, criamos com o primeiro batch
+                    self.index = VectorStoreIndex.from_documents(
+                    batch,
+                        storage_context=self.storage_context,
+                        show_progress=show_progress,
+                    )
+            
+            # Configura o Reranker (re-classificador) para maior precisão
+            # Ele pega os top 20 resultados da busca vetorial e usa o LLM para escolher os 5 melhores
+            from llama_index.core.postprocessor import LLMRerank
+            reranker = LLMRerank(
+                top_n=5, 
+                llm=Settings.llm
+            )
             
             # Atualiza o query engine com Reranking
             self._query_engine = self.index.as_query_engine(
-                similarity_top_k=10, # Aumentado para dar mais opções ao Reranker
-                node_postprocessors=[
-                    LLMRerank(choice_batch_size=5, top_n=3)
-                ],
+                similarity_top_k=20,
                 response_mode="compact",
+                node_postprocessors=[reranker],
                 verbose=False,
             )
             
-            self.logger.info(f"Indexação concluída: {len(documents)} documentos")
+            self.logger.info(f"Indexação concluída: {total_docs} documentos em {max(1, (total_docs + batch_size - 1) // batch_size)} batches")
             return self.index
             
         except Exception as e:
             self.logger.error(f"Erro na indexação: {e}")
-            raise RuntimeError(f"Falha ao indexar documentos: {e}")
+            raise RuntimeError(f"Falha ao indexar documentos: {e}. Tente reduzir o número de arquivos ou use documentos menores.")
     
     def query(
         self, 
@@ -384,32 +468,58 @@ class RAGEngine:
                     filters=[ExactMatchFilter(key="subject", value=subject_filter)]
                 )
 
+            # --- BUSCA HÍBRIDA MANUAL ---
+            # 1. Busca Semântica (Vetores)
+            retriever = self.index.as_retriever(similarity_top_k=20, filters=filters)
+            semantic_nodes = retriever.retrieve(question)
+            self.logger.info(f"Busca semântica: {len(semantic_nodes)} nós encontrados")
+            
+            # 2. Busca por Palavras-Chave (Texto Exato)
+            keyword_nodes = self._get_keyword_nodes(question)
+            self.logger.info(f"Busca por palavras-chave: {len(keyword_nodes)} nós encontrados")
+            
+            # 3. Combinação e Reranking
+            all_nodes = semantic_nodes + keyword_nodes
+            
+            if not all_nodes:
+                self.logger.warning("Nenhum contexto encontrado para a pergunta.")
+                return "Não encontrei informações específicas sobre isso nos documentos indexados. Tente reformular a pergunta ou verificar se o assunto correto está selecionado."
+
+            from llama_index.core.postprocessor import LLMRerank
+            reranker = LLMRerank(top_n=10, llm=Settings.llm)
+            final_nodes = reranker.postprocess_nodes(all_nodes, query_str=question)
+            self.logger.info(f"Após Reranking: {len(final_nodes)} nós selecionados")
+            
+            # 4. Geração de Resposta
+            from llama_index.core.query_engine import RetrieverQueryEngine
+            from llama_index.core.response_synthesizers import get_response_synthesizer
+            
+            response_synthesizer = get_response_synthesizer(response_mode="compact")
+            
             if use_chat_memory and self.chat_memory:
-                # Usa chat engine com memória
+                # Usa chat engine com os nós híbridos
                 chat_engine = self.index.as_chat_engine(
                     chat_mode=ChatMode.CONTEXT,
                     memory=self.chat_memory,
-                    similarity_top_k=5,
+                    similarity_top_k=20,
                     filters=filters,
+                    node_postprocessors=[reranker]
                 )
                 response = chat_engine.chat(question)
             else:
-                # Query simples (com ou sem filtro)
-                if filters:
-                    temp_query_engine = self.index.as_query_engine(
-                        similarity_top_k=10,
-                        node_postprocessors=[
-                            LLMRerank(choice_batch_size=5, top_n=3)
-                        ],
-                        response_mode="compact",
-                        filters=filters,
-                    )
-                    response = temp_query_engine.query(question)
-                else:
-                    response = self._query_engine.query(question)
+                # Para query normal, sintetizamos a resposta usando os nós finais selecionados
+                response = response_synthesizer.synthesize(
+                    query=question,
+                    nodes=final_nodes
+                )
             
-            answer = str(response)
-            self.logger.info(f"Resposta gerada: {len(answer)} caracteres")
+            answer = str(response).strip()
+            
+            if not answer:
+                self.logger.warning("LLM retornou resposta vazia.")
+                return "O modelo não conseguiu gerar uma resposta com base no contexto encontrado. Tente perguntar de outra forma."
+
+            self.logger.info(f"Resposta gerada ({len(answer)} caracteres): {answer[:100]}...")
             return answer
             
         except Exception as e:
@@ -451,11 +561,15 @@ class RAGEngine:
                 filters=[ExactMatchFilter(key="subject", value=subject_filter)]
             )
         
+        from llama_index.core.postprocessor import LLMRerank
+        reranker = LLMRerank(top_n=5, llm=Settings.llm)
+        
         chat_engine = self.index.as_chat_engine(
             chat_mode=ChatMode.CONTEXT,
             memory=memory,
-            similarity_top_k=5,
+            similarity_top_k=20,
             filters=filters,
+            node_postprocessors=[reranker]
         )
         
         response = chat_engine.chat(message)

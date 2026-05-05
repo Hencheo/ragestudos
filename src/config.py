@@ -87,6 +87,12 @@ class RAGConfig(BaseSettings):
         description="Se deve usar o Docling para extração local avançada",
         alias="USE_DOCLING"
     )
+
+    use_image_treatment: bool = Field(
+        default=True,
+        description="Se deve aplicar tratamento de imagem (contraste/brilho) antes do OCR",
+        alias="USE_IMAGE_TREATMENT"
+    )
     
     # ChromaDB Configuration
     chroma_host: str = Field(
