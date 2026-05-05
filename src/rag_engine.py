@@ -76,10 +76,35 @@ class RAGEngine:
         self._setup_embeddings()
         self._setup_chunking()
         
+        # Configura o System Prompt especializado
+        self._setup_system_prompt()
+        
         # Configura o banco vetorial
         self._setup_vector_store()
         
         self.logger.info("RAGEngine inicializado com sucesso")
+
+    def _setup_system_prompt(self):
+        """Configura a personalidade e o formato de resposta do Hermes."""
+        from llama_index.core import PromptTemplate
+        
+        system_prompt = (
+            "Você é o Hermes, um assistente de IA especializado em análise de documentos e extração de conhecimento.\n"
+            "Sua missão é fornecer respostas precisas, profissionais e extremamente bem estruturadas.\n\n"
+            "DIRETRIZES DE FORMATAÇÃO:\n"
+            "1. Use Markdown para estruturar TODAS as suas respostas.\n"
+            "2. Utilize títulos (###) e subtítulos para organizar diferentes tópicos.\n"
+            "3. Use listas com bullet points (-) para enumerar itens, habilidades ou características.\n"
+            "4. Destaque termos técnicos, nomes de certificados, leis ou conceitos-chave em **negrito**.\n"
+            "5. Se a resposta for longa, comece com um breve resumo e use seções claras.\n"
+            "6. Mantenha um tom profissional, direto e analítico.\n"
+            "7. Se a informação não estiver nos documentos, diga claramente que não encontrou, em vez de inventar.\n\n"
+            "Sempre responda em Português do Brasil, a menos que solicitado o contrário."
+        )
+        
+        # Define o prompt no Settings global para que todos os engines o utilizem
+        Settings.system_prompt = system_prompt
+        self.logger.info("System Prompt especializado configurado")
     
     def extract_metadata_from_text(self, text: str) -> dict:
         """Usa a IA para extrair metadados inteligentes de um texto.
@@ -493,8 +518,40 @@ class RAGEngine:
             # 4. Geração de Resposta
             from llama_index.core.query_engine import RetrieverQueryEngine
             from llama_index.core.response_synthesizers import get_response_synthesizer
+            from llama_index.core import PromptTemplate
             
-            response_synthesizer = get_response_synthesizer(response_mode="compact")
+            # Prompts customizados para forçar estrutura Markdown
+            qa_prompt_str = (
+                "Contexto:\n"
+                "---------------------\n"
+                "{context_str}\n"
+                "---------------------\n"
+                "Pergunta: {query_str}\n\n"
+                "Responda à pergunta de forma profissional e extremamente bem estruturada usando Markdown.\n"
+                "Use bullet points, negrito para termos chave e separe por tópicos se necessário.\n"
+                "Se a informação não estiver no contexto, diga que não encontrou.\n"
+                "Resposta:"
+            )
+            qa_prompt = PromptTemplate(qa_prompt_str)
+            
+            refine_prompt_str = (
+                "A resposta original é: {existing_answer}\n"
+                "Temos a oportunidade de refinar a resposta com mais contexto abaixo.\n"
+                "---------------------\n"
+                "{context_msg}\n"
+                "---------------------\n"
+                "Com base no novo contexto, refine a resposta original para ser ainda mais completa e bem estruturada.\n"
+                "Mantenha a estrutura Markdown (bullet points, negrito, títulos).\n"
+                "Se o novo contexto não ajudar, retorne a resposta original.\n"
+                "Resposta Refinada:"
+            )
+            refine_prompt = PromptTemplate(refine_prompt_str)
+            
+            response_synthesizer = get_response_synthesizer(
+                response_mode="compact",
+                text_qa_template=qa_prompt,
+                refine_template=refine_prompt
+            )
             
             if use_chat_memory and self.chat_memory:
                 # Usa chat engine com os nós híbridos
