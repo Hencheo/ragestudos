@@ -59,12 +59,25 @@ export default function Home() {
     }
   };
 
-  const handleSelectSession = (id: string) => {
+  const handleSelectSession = async (id: string) => {
     setSessionId(id);
-    setMessages([{ 
-      role: "assistant", 
-      content: `Contexto da conversa **${id}** carregado da memória persistente. Como posso continuar ajudando?` 
-    }]);
+    setIsLoading(true);
+    try {
+      const { getSessionMessages } = await import("@/lib/api");
+      const history = await getSessionMessages(id);
+      if (history && history.length > 0) {
+        setMessages(history);
+      } else {
+        setMessages([{ 
+          role: "assistant", 
+          content: `Contexto da conversa **${id}** carregado da memória persistente. Como posso continuar ajudando?` 
+        }]);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar histórico:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDeleteSession = async (id: string) => {

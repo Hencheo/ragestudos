@@ -384,6 +384,7 @@ class RAGEngine:
             memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
             
             # Tenta carregar o último resumo do banco para dar contexto inicial
+            # (Mantido como fallback, mas o ideal é injetar o histórico real via set_chat_history)
             historical_summary = self._get_latest_session_summary(session_id)
             if historical_summary:
                 from llama_index.core.llms import ChatMessage, MessageRole
@@ -391,12 +392,29 @@ class RAGEngine:
                     role=MessageRole.SYSTEM, 
                     content=f"RESUMO DAS INTERAÇÕES ANTERIORES: {historical_summary}"
                 ))
-                self.logger.info(f"Contexto histórico carregado para sessão {session_id}")
+                self.logger.info(f"Contexto histórico (resumo) carregado para sessão {session_id}")
             
             self.chat_memories[session_id] = memory
             
         return self.chat_memories[session_id]
-    
+
+    def set_chat_history(self, session_id: str, messages: List[Dict[str, str]]) -> None:
+        """Injeta um histórico real de mensagens na memória da sessão.
+        
+        Args:
+            session_id: ID da sessão.
+            messages: Lista de dicts com {'role': 'user'|'assistant', 'content': str}
+        """
+        from llama_index.core.llms import ChatMessage, MessageRole
+        
+        memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+        for msg in messages:
+            role = MessageRole.USER if msg['role'] == 'user' else MessageRole.ASSISTANT
+            memory.put(ChatMessage(role=role, content=msg['content']))
+            
+        self.chat_memories[session_id] = memory
+        self.logger.info(f"Histórico real de {len(messages)} mensagens injetado na sessão {session_id}")
+
     def index_documents(
         self, 
         documents: List[Document],
@@ -586,13 +604,14 @@ class RAGEngine:
             
             if use_chat_memory:
                 memory = self._get_chat_memory(session_id)
-                # Usa chat engine com os nós híbridos
+                # Usa CONDENSE_PLUS_CONTEXT para entender pronomes e contexto de acompanhamento
                 chat_engine = self.index.as_chat_engine(
-                    chat_mode=ChatMode.CONTEXT,
+                    chat_mode=ChatMode.CONDENSE_PLUS_CONTEXT,
                     memory=memory,
                     similarity_top_k=20,
                     filters=filters,
-                    node_postprocessors=[reranker]
+                    node_postprocessors=[reranker],
+                    verbose=False
                 )
                 response = chat_engine.chat(question)
             else:
@@ -660,11 +679,12 @@ class RAGEngine:
         reranker = LLMRerank(top_n=5, llm=Settings.llm)
         
         chat_engine = self.index.as_chat_engine(
-            chat_mode=ChatMode.CONTEXT,
+            chat_mode=ChatMode.CONDENSE_PLUS_CONTEXT,
             memory=memory,
             similarity_top_k=20,
             filters=filters,
-            node_postprocessors=[reranker]
+            node_postprocessors=[reranker],
+            verbose=False
         )
         
         response = chat_engine.chat(message)

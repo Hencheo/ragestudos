@@ -128,6 +128,10 @@ export async function getSessions() {
   return safeFetch(`${API_URL}/sessions`);
 }
 
+export async function getSessionMessages(sessionId: string) {
+  return safeFetch(`${API_URL}/sessions/${encodeURIComponent(sessionId)}/messages`);
+}
+
 export async function clearDatabase(options?: { session_id?: string }) {
   const formData = new FormData();
   if (options?.session_id) {

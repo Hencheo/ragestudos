@@ -205,6 +205,16 @@ class HermesService:
             return True
         return False
 
+    def load_history(self, session_id: str, messages: List[Dict[str, str]]) -> bool:
+        """Carrega o histórico de mensagens no motor para contexto."""
+        if not self.engine:
+            self.initialize_engine()
+        
+        if self.engine:
+            self.engine.set_chat_history(session_id, messages)
+            return True
+        return False
+
     def get_database_stats(self) -> Dict[str, Any]:
         """Retorna estatísticas da base de conhecimento atual."""
         try:

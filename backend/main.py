@@ -29,6 +29,7 @@ from backend.schemas import (
     MAX_QUESTION_LENGTH, MAX_SUBJECT_LENGTH, MAX_FILES_PER_UPLOAD,
     ALLOWED_PROVIDERS,
 )
+from backend.history import HistoryManager
 from backend.observability import (
     setup_logging, RequestLoggingMiddleware, Metrics, check_health, timed
 )
@@ -77,10 +78,12 @@ _QUERY_CACHE_TTL = 300  # 5 minutos
 try:
     config = RAGConfig()
     service = HermesService(config)
-    logger.info("HermesService inicializado com sucesso")
+    history = HistoryManager()
+    logger.info("HermesService e HistoryManager inicializados com sucesso")
 except Exception as e:
     logger.error(f"Erro ao carregar configuração: {e}", exc_info=True)
     service = None
+    history = None
 
 
 def _ensure_service():
@@ -261,6 +264,7 @@ def cancel_upload(task_id: str):
 @limiter.limit("20/minute")
 def query_rag(
     request: Request,
+    background_tasks: BackgroundTasks,
     question: str = Form(...),
     subject: Optional[str] = Form(None),
     session_id: str = Form("default"),
@@ -281,6 +285,13 @@ def query_rag(
             if not service.engine:
                 service.initialize_engine()
 
+    # --- SINCRONIZAÇÃO DE HISTÓRICO (SQLite -> Memória Viva do Modelo) ---
+    # Se a sessão não está na RAM mas existe no banco, carregamos para dar contexto
+    if history and service.engine and session_id not in service.engine.chat_memories:
+        past_messages = history.get_messages(session_id)
+        if past_messages:
+            service.load_history(session_id, past_messages)
+
     # --- CACHE de queries (inclui session_id para evitar colisões entre contextos) ---
     cache_key = hashlib.md5(f"{question}:{subject or ''}:{session_id}".encode()).hexdigest()
     _cleanup_cache(_query_cache, _QUERY_CACHE_TTL)
@@ -300,17 +311,58 @@ def query_rag(
         # Armazena no cache
         _query_cache[cache_key] = {"response": response, "_ts": time.time()}
 
+        # --- PERSISTÊNCIA NO HISTÓRICO (SQLite) ---
+        if history:
+            history.save_message(session_id, "user", question)
+            history.save_message(session_id, "assistant", response)
+            
+            # Se for uma sessão nova, gera um título automático em background
+            if history.is_new_session(session_id):
+                background_tasks.add_task(generate_session_title, session_id, question)
+
         return {"response": response}
     except Exception as e:
         logger.error(f"Erro na query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def generate_session_title(session_id: str, first_question: str):
+    """Gera um título curto e assertivo para a sessão usando o LLM."""
+    try:
+        prompt = (
+            f"Com base na pergunta inicial abaixo, gere um título extremamente curto e profissional "
+            f"para esta conversa (máximo de 4 palavras). Responda APENAS o título, sem pontuação final.\n\n"
+            f"Pergunta: {first_question}"
+        )
+        title = str(service.engine._llm_complete_with_retry(prompt)).strip()
+        # Remove aspas se o modelo retornar
+        title = title.replace('"', '').replace("'", "")
+        if len(title) > 50:
+            title = title[:47] + "..."
+            
+        history.update_session_title(session_id, title)
+    except Exception as e:
+        logger.warning(f"Falha ao gerar título para sessão {session_id}: {e}")
+
+
 @app.get("/sessions")
 def get_sessions():
-    """Retorna todas as sessões de chat salvas."""
-    _ensure_service()
-    return service.get_all_sessions()
+    """Retorna todas as sessões de chat salvas do SQLite."""
+    if not history:
+        return []
+    return history.list_sessions()
+
+
+@app.get("/sessions/{session_id}/messages")
+def get_session_messages(session_id: str):
+    """Retorna o histórico completo de mensagens de uma sessão."""
+    if not history:
+        return []
+    messages = history.get_messages(session_id)
+    if not messages:
+        # Se não achou no SQLite, talvez seja uma sessão nova que ainda não salvou
+        return []
+    return messages
 
 
 @app.post("/clear")
@@ -322,9 +374,12 @@ def clear_db(
     _ensure_service()
 
     if session_id:
-        # Limpa apenas a memória de uma sessão específica
+        # Limpa memória de curto prazo (RAM)
         success = service.reset_session(session_id)
-        return {"success": success, "message": f"Memória da sessão {session_id} limpa." if success else "Motor não inicializado"}
+        # Limpa histórico persistente (SQLite)
+        if history:
+            history.delete_session(session_id)
+        return {"success": success, "message": f"Memória e histórico da sessão {session_id} limpos."}
 
     # Limpa caches globais
     _query_cache.clear()
