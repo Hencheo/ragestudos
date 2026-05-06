@@ -1,0 +1,38 @@
+# ESTRATÉGIA DE EXPANSÃO: HERMES FOR STUDENTS (EDTECH)
+
+Este documento registra a visão estratégica para adaptar o motor Hermes RAG para o mercado educacional, transformando o assistente de documentos em um Tutor de IA Pedagógico.
+
+## 🎯 OBJETIVO
+Permitir que estudantes utilizem suas próprias bases de materiais (livros, apostilas, anotações) para um aprendizado ativo e proativo, indo além da simples consulta.
+
+---
+
+## 🚀 FUNCIONALIDADES CHAVE
+
+### 1. Motor de Simulados (Active Recall)
+*   **Geração de Questões**: Criar perguntas inéditas (múltipla escolha e discursivas) baseadas nos PDFs indexados.
+*   **Feedback Corretivo**: Em vez de apenas dar a nota, a IA aponta o erro e cita a página exata do material onde o conceito correto está explicado.
+
+### 2. Modo Tutor Socrático
+*   **IA Pedagógica**: O sistema é configurado para não dar a resposta final imediatamente, mas guiar o aluno através de perguntas e dicas (scaffolding).
+*   **Verificação de Raciocínio**: A IA analisa a lógica do estudante e sinaliza falhas conceituais.
+
+### 3. Flashcards Automáticos
+*   **Extração de Conceitos**: Identificação automática de termos-chave e definições para criação de cards de revisão (estilo Anki).
+*   **Espaçamento de Memória**: Sugestão de revisão baseada na curva do esquecimento.
+
+### 4. Guia de Estudos (Resumo Executivo)
+*   **Sintetização de Matéria**: Transformar capítulos densos em resumos estruturados com foco nos "pontos de prova".
+*   **Linha do Tempo de Matéria**: Organização cronológica de eventos ou evolução de conceitos.
+
+---
+
+## 🛠️ ADAPTAÇÃO TÉCNICA (ROADMAP)
+
+1.  **Seletor de Contexto**: Implementação de uma chave [Jurídico | Estudante] na interface.
+2.  **Prompt Pedagógico**: Criação de um System Prompt focado em ensino, não apenas em extração de dados.
+3.  **Módulo de Avaliação**: Nova funcionalidade no Backend para validar respostas do usuário contra o conteúdo do banco vetorial.
+
+---
+Documento gerado como registro de visão estratégica em 06/05/2026.
+Focus Atual: Hermes RAG Jurídico.

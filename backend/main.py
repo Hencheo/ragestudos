@@ -208,6 +208,38 @@ def run_upload_task(task_id: str, files_data: list, subject: str, use_ocr: bool)
         TaskManager.update_task(task_id, status="failed", message=f"Erro fatal: {str(e)}")
 
 
+@app.post("/external/fetch-process")
+@limiter.limit("5/minute")
+async def fetch_external_process(
+    request: Request,
+    process_number: str = Form(...),
+):
+    """Busca e indexa um processo de base externa (CNJ/DataJud)."""
+    _ensure_service()
+    
+    process_number = sanitize_string(process_number, 50).strip()
+    if not process_number:
+        raise HTTPException(status_code=400, detail="Número do processo é obrigatório")
+
+    logger.info(f"📡 Solicitação de busca externa: {process_number}")
+    
+    try:
+        result = await service.fetch_and_index_external_process(process_number)
+        
+        if not result["success"]:
+            # Se não encontrou, retornamos 404
+            if "não encontrado" in result["message"].lower():
+                raise HTTPException(status_code=404, detail=result["message"])
+            raise HTTPException(status_code=500, detail=result["message"])
+            
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao processar busca externa {process_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/upload/status/{task_id}")
 def get_upload_status(task_id: str):
     task = TaskManager.get_task(task_id)
@@ -231,6 +263,7 @@ def query_rag(
     request: Request,
     question: str = Form(...),
     subject: Optional[str] = Form(None),
+    session_id: str = Form("default"),
 ):
     _ensure_service()
 
@@ -248,8 +281,8 @@ def query_rag(
             if not service.engine:
                 service.initialize_engine()
 
-    # --- CACHE de queries ---
-    cache_key = hashlib.md5(f"{question}:{subject or ''}".encode()).hexdigest()
+    # --- CACHE de queries (inclui session_id para evitar colisões entre contextos) ---
+    cache_key = hashlib.md5(f"{question}:{subject or ''}:{session_id}".encode()).hexdigest()
     _cleanup_cache(_query_cache, _QUERY_CACHE_TTL)
 
     if cache_key in _query_cache:
@@ -258,7 +291,7 @@ def query_rag(
 
     try:
         start = time.perf_counter()
-        response = service.ask_question(question, subject_filter=subject)
+        response = service.ask_question(question, subject_filter=subject, session_id=session_id)
         duration_ms = (time.perf_counter() - start) * 1000
 
         Metrics.record_query(duration_ms)
@@ -273,12 +306,27 @@ def query_rag(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/sessions")
+def get_sessions():
+    """Retorna todas as sessões de chat salvas."""
+    _ensure_service()
+    return service.get_all_sessions()
+
+
 @app.post("/clear")
 @limiter.limit("5/minute")
-def clear_db(request: Request):
+def clear_db(
+    request: Request,
+    session_id: Optional[str] = Form(None)
+):
     _ensure_service()
 
-    # Limpa caches
+    if session_id:
+        # Limpa apenas a memória de uma sessão específica
+        success = service.reset_session(session_id)
+        return {"success": success, "message": f"Memória da sessão {session_id} limpa." if success else "Motor não inicializado"}
+
+    # Limpa caches globais
     _query_cache.clear()
     _idempotency_cache.clear()
 

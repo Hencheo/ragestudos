@@ -85,6 +85,27 @@ async def clear_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Erro no clear: {e}")
         await update.message.reply_text("⚠️ Falha de comunicação com o servidor.")
 
+async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Limpa a memória de contexto do usuário."""
+    session_id = f"tg_{update.effective_chat.id}"
+    try:
+        async with httpx.AsyncClient() as client:
+            # Precisamos de um endpoint no backend para limpar uma sessão específica
+            # Ou podemos simplesmente não fazer nada e o RAG engine limpa no próximo query se passarmos reset
+            # Mas vamos usar o /clear do backend que agora aceita session_id (preciso atualizar o backend)
+            response = await client.post(
+                f"{API_URL}/clear", 
+                data={"session_id": session_id},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                await update.message.reply_text("🔄 Memória de conversa resetada!")
+            else:
+                await update.message.reply_text("❌ Erro ao resetar memória.")
+    except Exception as e:
+        logger.error(f"Erro no reset: {e}")
+        await update.message.reply_text("⚠️ Falha de comunicação com o servidor.")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Trata mensagens de texto (queries)."""
     question = update.message.text
@@ -93,14 +114,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Feedback visual de que o bot está processando
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    session_id = f"tg_{update.effective_chat.id}"
 
     try:
         async with httpx.AsyncClient() as client:
             # Chama o endpoint de query do backend
-            # O backend espera Form data para question e subject
+            # O backend espera Form data para question, subject e session_id
             response = await client.post(
                 f"{API_URL}/query",
-                data={"question": question},
+                data={
+                    "question": question,
+                    "session_id": session_id
+                },
                 timeout=60.0
             )
             
@@ -165,6 +190,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CommandHandler('stats', get_stats))
     application.add_handler(CommandHandler('clear', clear_db))
+    application.add_handler(CommandHandler('reset', reset_memory))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     application.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     

@@ -56,7 +56,7 @@ class RAGEngine:
         self.api_key = api_key
         self.config = config
         self.index: Optional[VectorStoreIndex] = None
-        self.chat_memory: Optional[ChatMemoryBuffer] = None
+        self.chat_memories: Dict[str, ChatMemoryBuffer] = {}
         self._query_engine: Optional[RetrieverQueryEngine] = None
         
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -375,17 +375,27 @@ class RAGEngine:
             self.logger.warning(f"Erro na busca por palavras-chave: {e}")
             return []
     
-    def _init_chat_memory(self) -> ChatMemoryBuffer:
-        """Inicializa o buffer de memória de chat.
+    def _get_chat_memory(self, session_id: str = "default") -> ChatMemoryBuffer:
+        """Obtém ou inicializa o buffer de memória de chat para uma sessão.
         
-        Returns:
-            ChatMemoryBuffer: Buffer de memória configurado.
+        Tenta carregar o resumo histórico do banco se a sessão for nova.
         """
-        if self.chat_memory is None:
-            self.chat_memory = ChatMemoryBuffer.from_defaults(
-                token_limit=3000,
-            )
-        return self.chat_memory
+        if session_id not in self.chat_memories:
+            memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+            
+            # Tenta carregar o último resumo do banco para dar contexto inicial
+            historical_summary = self._get_latest_session_summary(session_id)
+            if historical_summary:
+                from llama_index.core.llms import ChatMessage, MessageRole
+                memory.put(ChatMessage(
+                    role=MessageRole.SYSTEM, 
+                    content=f"RESUMO DAS INTERAÇÕES ANTERIORES: {historical_summary}"
+                ))
+                self.logger.info(f"Contexto histórico carregado para sessão {session_id}")
+            
+            self.chat_memories[session_id] = memory
+            
+        return self.chat_memories[session_id]
     
     def index_documents(
         self, 
@@ -474,7 +484,8 @@ class RAGEngine:
         self, 
         question: str,
         use_chat_memory: bool = False,
-        subject_filter: Optional[str] = None
+        subject_filter: Optional[str] = None,
+        session_id: str = "default"
     ) -> str:
         """Executa uma query no sistema RAG.
         
@@ -573,11 +584,12 @@ class RAGEngine:
                 refine_template=refine_prompt
             )
             
-            if use_chat_memory and self.chat_memory:
+            if use_chat_memory:
+                memory = self._get_chat_memory(session_id)
                 # Usa chat engine com os nós híbridos
                 chat_engine = self.index.as_chat_engine(
                     chat_mode=ChatMode.CONTEXT,
-                    memory=self.chat_memory,
+                    memory=memory,
                     similarity_top_k=20,
                     filters=filters,
                     node_postprocessors=[reranker]
@@ -597,6 +609,11 @@ class RAGEngine:
                 return "O modelo não conseguiu gerar uma resposta com base no contexto encontrado. Tente perguntar de outra forma."
 
             self.logger.info(f"Resposta gerada ({len(answer)} caracteres): {answer[:100]}...")
+            
+            # Pós-processamento: Verifica se é necessário sumarizar para persistência
+            if use_chat_memory:
+                self._check_and_summarize_session(session_id)
+                
             return answer
             
         except Exception as e:
@@ -607,7 +624,8 @@ class RAGEngine:
         self, 
         message: str,
         reset: bool = False,
-        subject_filter: Optional[str] = None
+        subject_filter: Optional[str] = None,
+        session_id: str = "default"
     ) -> str:
         """Executa uma mensagem em modo chat com memória.
         
@@ -627,9 +645,9 @@ class RAGEngine:
             return "Minha base de conhecimento está vazia no momento. Por favor, faça o upload de alguns documentos nas configurações para que eu possa ajudá-lo com informações específicas!"
         
         if reset:
-            self.clear_chat_memory()
+            self.clear_chat_memory(session_id)
         
-        memory = self._init_chat_memory()
+        memory = self._get_chat_memory(session_id)
         
         # Prepara os filtros
         filters = None
@@ -656,7 +674,7 @@ class RAGEngine:
         """Limpa o índice de documentos e memória associada."""
         self.index = None
         self._query_engine = None
-        self.clear_chat_memory()
+        self.chat_memories.clear()
         
         # Limpa do banco de dados (recria a coleção)
         try:
@@ -704,14 +722,109 @@ class RAGEngine:
             self.logger.error(f"Erro ao deletar documento {file_name}: {e}")
             return False
     
-    def clear_chat_memory(self) -> None:
-        """Limpa a memória de conversa.
+    def _get_latest_session_summary(self, session_id: str) -> Optional[str]:
+        """Recupera o resumo mais recente de uma sessão do banco de dados."""
+        if not self.index or not self.vector_store:
+            return None
+            
+        try:
+            filters = MetadataFilters(filters=[
+                ExactMatchFilter(key="session_id", value=session_id),
+                ExactMatchFilter(key="document_type", value="chat_summary")
+            ])
+            
+            retriever = self.index.as_retriever(similarity_top_k=1, filters=filters)
+            nodes = retriever.retrieve("Resumo da conversa")
+            
+            if nodes:
+                return nodes[0].text
+            return None
+        except Exception as e:
+            self.logger.warning(f"Erro ao recuperar resumo histórico: {e}")
+            return None
+
+    def _check_and_summarize_session(self, session_id: str) -> None:
+        """Verifica se a sessão atingiu o limite para gerar um novo resumo persistente."""
+        memory = self.chat_memories.get(session_id)
+        if not memory:
+            return
+            
+        # Pegamos o histórico (limitado ao buffer)
+        history = memory.get()
         
-        Remove todo o histórico de mensagens do chat.
-        """
-        if self.chat_memory:
-            self.chat_memory.reset()
-            self.logger.info("Memória de chat limpa")
+        # Só sumarizamos se houver pelo menos um par (pergunta/resposta)
+        if len(history) >= 2:
+            # Para não pesar a cada mensagem, sumarizamos apenas em intervalos
+            # Ou se for uma sessão que está prestes a rotacionar mensagens
+            self.logger.info(f"Gerando resumo executivo para sessão {session_id}...")
+            
+            try:
+                prompt = (
+                    "Sintetize a conversa abaixo em um resumo executivo de 1 parágrafo, "
+                    "focando em nomes, números de processos e decisões mencionadas. "
+                    "Mantenha o tom profissional.\n\n"
+                    "CONVERSA:\n"
+                )
+                for msg in history:
+                    prompt += f"{msg.role.value}: {msg.content}\n"
+                
+                summary = str(Settings.llm.complete(prompt)).strip()
+                
+                # Deleta resumos anteriores desta sessão para manter apenas o mais recente
+                try:
+                    self.chroma_collection.delete(where={
+                        "$and": [
+                            {"session_id": session_id},
+                            {"document_type": "chat_summary"}
+                        ]
+                    })
+                except Exception as e:
+                    # Pode falhar se o Chroma não suportar $and no delete direto ou se não houver registros
+                    self.chroma_collection.delete(where={"session_id": session_id})
+                
+                # Salva no ChromaDB
+                from llama_index.core import Document
+                summary_doc = Document(
+                    text=summary,
+                    metadata={
+                        "session_id": session_id,
+                        "document_type": "chat_summary",
+                        "is_chat_summary": "true",
+                        "subject": "Memória de Sessão",
+                        "file_name": f"Resumo_{session_id}"
+                    }
+                )
+                
+                # Inserção no índice
+                if self.index:
+                    self.index.insert(summary_doc)
+                    self.logger.info(f"Resumo persistido com sucesso para {session_id}")
+                    
+            except Exception as e:
+                self.logger.error(f"Falha ao gerar resumo persistente: {e}")
+
+    def clear_chat_memory(self, session_id: Optional[str] = None) -> None:
+        """Limpa a memória de conversa e seus resumos no banco."""
+        if session_id:
+            if session_id in self.chat_memories:
+                self.chat_memories[session_id].reset()
+                
+            # Remove também os resumos do banco vetorial
+            if self.vector_store:
+                try:
+                    # Deleta por filtro de metadados
+                    self.chroma_collection.delete(where={"session_id": session_id})
+                    self.logger.info(f"Base de dados limpa para a sessão {session_id}")
+                except Exception as e:
+                    self.logger.warning(f"Erro ao limpar banco para sessão {session_id}: {e}")
+            
+            self.logger.info(f"Memória de chat da sessão {session_id} limpa")
+        else:
+            self.chat_memories.clear()
+            # Limpa todos os resumos de chat do banco
+            if self.vector_store:
+                self.chroma_collection.delete(where={"document_type": "chat_summary"})
+            self.logger.info("Todas as memórias de chat foram limpas")
     
     def is_ready(self) -> bool:
         """Verifica se o motor está pronto para queries.
@@ -730,7 +843,7 @@ class RAGEngine:
         return {
             "is_ready": self.is_ready(),
             "has_index": self.index is not None,
-            "has_chat_memory": self.chat_memory is not None,
+            "active_sessions": len(self.chat_memories),
             "model_name": self.config.model_name,
             "temperature": self.config.temperature,
             "chunk_size": self.config.chunk_size,

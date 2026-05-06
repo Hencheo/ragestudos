@@ -86,10 +86,11 @@ async function safeFetch(
   }
 }
 
-export async function queryHermes(question: string, subject?: string) {
+export async function queryHermes(question: string, subject?: string, sessionId: string = "default") {
   const formData = new FormData();
   formData.append("question", question);
   if (subject) formData.append("subject", subject);
+  formData.append("session_id", sessionId);
 
   return safeFetch(`${API_URL}/query`, {
     method: "POST",
@@ -109,12 +110,30 @@ export async function uploadFiles(files: File[], subject: string, useOcr: boolea
   });
 }
 
+export async function fetchExternalProcess(processNumber: string) {
+  const formData = new FormData();
+  formData.append("process_number", processNumber);
+
+  return safeFetch(`${API_URL}/external/fetch-process`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
 export async function getStats() {
   return safeFetch(`${API_URL}/stats`);
 }
 
-export async function clearDatabase() {
-  return safeFetch(`${API_URL}/clear`, { method: "POST" });
+export async function getSessions() {
+  return safeFetch(`${API_URL}/sessions`);
+}
+
+export async function clearDatabase(options?: { session_id?: string }) {
+  const formData = new FormData();
+  if (options?.session_id) {
+    formData.append("session_id", options.session_id);
+  }
+  return safeFetch(`${API_URL}/clear`, { method: "POST", body: formData });
 }
 
 export async function getUploadStatus(taskId: string) {

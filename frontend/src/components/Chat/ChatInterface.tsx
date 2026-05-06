@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send, User, Bot, Paperclip, Mic, Sparkles, ChevronDown, Database, Tag, Check, Copy } from "lucide-react";
+import { Send, User, Bot, Paperclip, Mic, Sparkles, ChevronDown, Database, Tag, Check, Copy, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 
@@ -17,6 +17,7 @@ interface ChatInterfaceProps {
   subjects: string[];
   selectedSubject: string | null;
   onSelectSubject: (subject: string | null) => void;
+  onOpenUpload: () => void;
 }
 
 export default function ChatInterface({
@@ -25,7 +26,8 @@ export default function ChatInterface({
   isLoading,
   subjects,
   selectedSubject,
-  onSelectSubject
+  onSelectSubject,
+  onOpenUpload
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -70,7 +72,7 @@ export default function ChatInterface({
       {/* 1. Header Discreto */}
       <header className="h-14 flex items-center px-6 justify-between bg-[#212121] z-20 flex-shrink-0">
         <div className="relative" ref={dropdownRef}>
-          <button 
+          <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-2 hover:bg-[#2f2f2f] px-3 py-1.5 rounded-lg transition-all group"
           >
@@ -92,7 +94,7 @@ export default function ChatInterface({
                 <div className="px-3 py-1.5 text-[10px] font-bold text-[#555] uppercase tracking-widest">
                   Contexto de Análise
                 </div>
-                
+
                 <button
                   onClick={() => {
                     onSelectSubject(null);
@@ -127,8 +129,19 @@ export default function ChatInterface({
             )}
           </AnimatePresence>
         </div>
-        <div className="flex items-center gap-4 text-[#666]">
-          <Sparkles size={16} className="hover:text-yellow-500 transition-colors cursor-pointer" />
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onOpenUpload}
+            className="group relative p-2 rounded-lg hover:bg-[#2f2f2f] transition-all"
+            title="Importar Dados"
+          >
+            <Upload size={16} className="text-blue-400 group-hover:scale-110 transition-transform" />
+
+            {/* Tooltip personalizado */}
+            <span className="absolute top-full right-0 mt-2 px-2 py-1 bg-[#333] text-[10px] text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap font-medium uppercase tracking-wider">
+              Importar Dados
+            </span>
+          </button>
         </div>
       </header>
 
@@ -163,14 +176,13 @@ export default function ChatInterface({
                   transition={{ duration: 0.3 }}
                   className={`flex flex-col group ${msg.role === "assistant" ? "items-start" : "items-end"}`}
                 >
-                  <div className={`max-w-[85%] px-4 py-2.5 rounded-[22px] transition-all ${
-                    msg.role === "user" 
-                      ? "bg-[#2f2f2f] text-[#ececec] border border-[#333] hover:border-[#444]" 
-                      : "text-[#ececec] px-0"
-                  }`}>
+                  <div className={`max-w-[85%] px-4 py-2.5 rounded-[22px] transition-all ${msg.role === "user"
+                    ? "bg-[#2f2f2f] text-[#ececec] border border-[#333] hover:border-[#444]"
+                    : "text-[#ececec] px-0"
+                    }`}>
                     <div className="text-[15px] leading-relaxed">
                       {msg.role === "assistant" ? (
-                        <ReactMarkdown 
+                        <ReactMarkdown
                           components={{
                             p: ({ ...props }) => <p className="mb-3 last:mb-0" {...props} />,
                             ul: ({ ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1" {...props} />,
@@ -192,9 +204,8 @@ export default function ChatInterface({
                   </div>
 
                   {/* Botão de Copiar */}
-                  <div className={`flex items-center mt-1.5 transition-opacity opacity-0 group-hover:opacity-100 ${
-                    msg.role === "user" ? "mr-2" : "ml-0"
-                  }`}>
+                  <div className={`flex items-center mt-1.5 transition-opacity opacity-0 group-hover:opacity-100 ${msg.role === "user" ? "mr-2" : "ml-0"
+                    }`}>
                     <button
                       onClick={() => handleCopy(msg.content, idx)}
                       className="p-1.5 rounded-lg hover:bg-[#2f2f2f] text-[#666] hover:text-[#999] transition-all flex items-center gap-1.5"
@@ -266,8 +277,8 @@ export default function ChatInterface({
                 disabled={!input.trim() || isLoading}
                 type="submit"
                 className={`p-2.5 rounded-full transition-all ${input.trim() && !isLoading
-                    ? "bg-white text-black hover:scale-105 active:scale-95"
-                    : "text-[#555] bg-[#3f3f3f]"
+                  ? "bg-white text-black hover:scale-105 active:scale-95"
+                  : "text-[#555] bg-[#3f3f3f]"
                   }`}
               >
                 <Send size={18} />

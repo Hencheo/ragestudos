@@ -14,6 +14,13 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import { motion } from "framer-motion";
+import ChatHistory from "./ChatHistory";
+
+interface Session {
+  id: string;
+  title: string;
+  summary?: string;
+}
 
 interface SidebarMenuProps {
   subjects: string[];
@@ -24,6 +31,10 @@ interface SidebarMenuProps {
   onOpenUpload: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  sessions: Session[];
+  currentSessionId: string | null;
+  onSelectSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 }
 
 export default function SidebarMenu({
@@ -34,7 +45,11 @@ export default function SidebarMenu({
   onOpenSettings,
   onOpenUpload,
   isCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  sessions,
+  currentSessionId,
+  onSelectSession,
+  onDeleteSession
 }: SidebarMenuProps) {
   return (
     <aside 
@@ -73,26 +88,33 @@ export default function SidebarMenu({
       {/* 2. ACTIONS: Nova Conversa */}
       <div className="p-3">
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
           onClick={onNewChat}
-          className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3 px-3"} py-3 border border-[#333] rounded-xl bg-[#171717] hover:bg-[#2f2f2f] transition-all text-sm font-medium shadow-sm text-[#ececec] w-full`}
+          className={`flex items-center ${isCollapsed ? "justify-center" : "gap-2.5 px-3"} py-2 border border-[#333] rounded-lg bg-[#171717] hover:bg-[#212121] transition-all text-[13px] font-medium text-[#ececec] w-full`}
         >
-          <Plus size={18} className="text-white shrink-0" />
+          <Plus size={16} className="text-white shrink-0" />
           {!isCollapsed && <span>Nova Conversa</span>}
         </motion.button>
       </div>
 
-      {/* 2. MIDDLE: Contextos / Assuntos - Agora movidos para o dropdown do header */}
-      <div className="flex-1 overflow-y-auto px-3 mt-4 space-y-1 custom-scrollbar">
+      {/* 2. MIDDLE: Histórico de Conversas */}
+      <div className="flex-1 overflow-y-auto mt-2 custom-scrollbar">
+        {sessions.length > 0 && (
+          <div className="mx-4 h-[1px] bg-[#222] mb-4 opacity-50" />
+        )}
+        
+        <ChatHistory 
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSelectSession={onSelectSession}
+          onDeleteSession={onDeleteSession}
+          isCollapsed={isCollapsed}
+        />
 
-        {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
-
-        {/* Assuntos agora ficam no dropdown do header no ChatInterface */}
-
-        {subjects.length === 0 && (
-          <div className="px-3 py-4 text-[12px] text-[#444] text-center italic">
-            Nenhum assunto indexado.
+        {subjects.length === 0 && sessions.length === 0 && !isCollapsed && (
+          <div className="px-6 py-10 text-[11px] text-[#333] text-center uppercase tracking-[0.2em] font-bold opacity-50">
+            Limpo
           </div>
         )}
       </div>
@@ -105,16 +127,6 @@ export default function SidebarMenu({
           </div>
         )}
 
-        <button
-          onClick={onOpenUpload}
-          className={`w-full group flex items-center ${isCollapsed ? "justify-center" : "gap-3 px-3"} py-2.5 rounded-lg text-sm text-[#999] hover:bg-[#222] hover:text-[#ccc] transition-all bg-transparent`}
-          title={isCollapsed ? "Importar Dados" : ""}
-        >
-          <div className="bg-[#222] p-1.5 rounded group-hover:bg-[#333] shrink-0">
-            <Upload size={14} />
-          </div>
-          {!isCollapsed && <span>Importar Dados</span>}
-        </button>
 
         <button
           onClick={onOpenUpload}

@@ -7,6 +7,9 @@ import chromadb
 from .rag_engine import RAGEngine
 from .document_loader import PDFDocumentLoader
 from .config import RAGConfig
+from .services_ext.external_api import ExternalApiService
+from .models.legal_process import LegalProcess
+from llama_index.core import Document
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ class HermesService:
         self.config = config
         self.engine: Optional[RAGEngine] = None
         self.loader = PDFDocumentLoader(config=config)
+        self.external_api = ExternalApiService()
         
     def initialize_engine(self) -> bool:
         """Inicializa o motor RAG se houver uma API Key válida."""
@@ -138,17 +142,68 @@ class HermesService:
             
         return {"success": False, "message": "Nenhum documento extraído."}
 
+    async def fetch_and_index_external_process(self, process_number: str) -> Dict[str, Any]:
+        """Busca dados de um processo externo e indexa no banco vetorial."""
+        if not self.engine:
+            self.initialize_engine()
 
-    def ask_question(self, question: str, subject_filter: Optional[str] = None) -> str:
-        """Executa uma query no motor RAG."""
+        try:
+            # 1. Busca os dados na API
+            process: Optional[LegalProcess] = await self.external_api.fetch_process_data(process_number)
+            
+            if not process:
+                return {"success": False, "message": f"Processo {process_number} não encontrado na base externa."}
+
+            # 2. Converte para Documento do LlamaIndex
+            text_content = process.to_rag_text()
+            metadata = {
+                "file_name": f"API_CNJ_{process.numero}.txt",
+                "case_number": process.numero,
+                "subject": "Sincronização API CNJ",
+                "document_type": "Processo Judicial",
+                "tribunal": process.tribunal,
+                "classe": process.classe,
+                "source": "external_api"
+            }
+            
+            doc = Document(text=text_content, metadata=metadata)
+            
+            # 3. Indexa no motor RAG
+            self.engine.index_documents([doc])
+            
+            return {
+                "success": True, 
+                "message": f"Processo {process_number} sincronizado e indexado com sucesso.",
+                "data": {
+                    "numero": process.numero,
+                    "tribunal": process.tribunal,
+                    "classe": process.classe
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Erro ao sincronizar processo {process_number}: {e}")
+            return {"success": False, "message": str(e)}
+
+
+    def ask_question(self, question: str, subject_filter: Optional[str] = None, session_id: str = "default") -> str:
+        """Executa uma query no motor RAG com memória de contexto."""
         if not self.engine:
             raise RuntimeError("Motor RAG não inicializado.")
             
         return self.engine.query(
             question, 
-            use_chat_memory=False, 
-            subject_filter=subject_filter
+            use_chat_memory=True, 
+            subject_filter=subject_filter,
+            session_id=session_id
         )
+
+    def reset_session(self, session_id: str) -> bool:
+        """Limpa a memória de uma sessão específica."""
+        if self.engine:
+            self.engine.clear_chat_memory(session_id)
+            return True
+        return False
 
     def get_database_stats(self) -> Dict[str, Any]:
         """Retorna estatísticas da base de conhecimento atual."""
@@ -182,6 +237,34 @@ class HermesService:
             }
         except Exception:
             return {"total_files": 0, "files": {}}
+
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """Recupera todas as sessões de chat salvas no banco."""
+        try:
+            client = chromadb.HttpClient(host=self.config.chroma_host, port=self.config.chroma_port)
+            collection = client.get_collection(name="hermes_documents")
+            # Busca apenas documentos do tipo chat_summary
+            results = collection.get(where={"document_type": "chat_summary"})
+            
+            sessions = []
+            seen_ids = set()
+            
+            if results and 'metadatas' in results:
+                for i, meta in enumerate(results['metadatas']):
+                    sid = meta.get('session_id')
+                    if sid and sid not in seen_ids:
+                        text = results['documents'][i] if 'documents' in results else "Sem resumo"
+                        sessions.append({
+                            "id": sid,
+                            "title": text[:40] + ("..." if len(text) > 40 else ""),
+                            "summary": text
+                        })
+                        seen_ids.add(sid)
+            
+            return sessions
+        except Exception as e:
+            logger.error(f"Erro ao buscar sessões: {e}")
+            return []
 
     def clear_database(self):
         """Limpa toda a base de conhecimento."""
