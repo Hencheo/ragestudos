@@ -164,8 +164,16 @@ class HermesService:
             for meta in results['metadatas']:
                 fname = meta.get('file_name', 'Desconhecido')
                 subj = meta.get('subject', 'Sem Assunto')
+                doc_type = meta.get('document_type', 'Desconhecido')
+                case_num = meta.get('case_number', 'Não identificado')
+                
                 if fname not in files_info:
-                    files_info[fname] = {"subject": subj, "chunks": 0}
+                    files_info[fname] = {
+                        "subject": subj, 
+                        "document_type": doc_type,
+                        "case_number": case_num,
+                        "chunks": 0
+                    }
                 files_info[fname]["chunks"] += 1
                 
             return {

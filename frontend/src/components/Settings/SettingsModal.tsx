@@ -369,7 +369,15 @@ function UploadTab() {
 }
 
 function DocumentosTab() {
-  const [dbStats, setDbStats] = useState<{ total_files: number, files: Record<string, { subject: string, chunks: number }> }>({ total_files: 0, files: {} });
+  const [dbStats, setDbStats] = useState<{ 
+    total_files: number, 
+    files: Record<string, { 
+      subject: string, 
+      document_type: string, 
+      case_number: string, 
+      chunks: number 
+    }> 
+  }>({ total_files: 0, files: {} });
   const [loading, setLoading] = useState(true);
 
   const fetchStats = async () => {
@@ -430,7 +438,12 @@ function DocumentosTab() {
                     </div>
                     <div className="truncate">
                       <div className="text-sm font-medium text-white truncate" title={name}>{name}</div>
-                      <div className="text-[10px] text-[#555]">Assunto: {info.subject} • {info.chunks} trechos</div>
+                      <div className="text-[10px] text-[#666] flex gap-2 items-center mt-0.5">
+                        <span className="bg-[#2a2a2a] px-1.5 py-0.5 rounded text-blue-300 font-bold uppercase tracking-tighter">{info.document_type || "Geral"}</span>
+                        <span className="truncate max-w-[120px]">{info.case_number !== "Não identificado" ? info.case_number : "Sem Nº Processo"}</span>
+                        <span className="text-[#333]">•</span>
+                        <span>{info.chunks} trechos</span>
+                      </div>
                     </div>
                   </div>
                   <button onClick={() => handleDeleteFile(name)} className="p-2 text-[#444] hover:text-red-400 hover:bg-red-400/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0">

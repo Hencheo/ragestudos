@@ -85,11 +85,12 @@ class RAGEngine:
             "DIRETRIZES DE FORMATAÇÃO:\n"
             "1. Use Markdown para estruturar TODAS as suas respostas.\n"
             "2. Utilize títulos (###) e subtítulos para organizar diferentes tópicos.\n"
-            "3. Use listas com bullet points (-) para enumerar itens, habilidades ou características.\n"
+            "3. Use listas com bullet points (-) para enumerar itens, leis ou características.\n"
             "4. Destaque termos técnicos, nomes de certificados, leis ou conceitos-chave em **negrito**.\n"
-            "5. Se a resposta for longa, comece com um breve resumo e use seções claras.\n"
-            "6. Mantenha um tom profissional, direto e analítico.\n"
-            "7. Se a informação não estiver nos documentos, diga claramente que não encontrou, em vez de inventar.\n\n"
+            "5. **RASTREABILIDADE (OBRIGATÓRIO)**: Todas as afirmações baseadas nos documentos DEVEM conter uma citação no formato [Nome do Arquivo, pág. X].\n"
+            "6. Se a resposta for longa, comece com um breve resumo e use seções claras.\n"
+            "7. Mantenha um tom profissional, direto e analítico.\n"
+            "8. Se a informação não estiver nos documentos, diga claramente que não encontrou, em vez de inventar.\n\n"
             "Sempre responda em Português do Brasil, a menos que solicitado o contrário."
         )
         
@@ -120,10 +121,12 @@ class RAGEngine:
         
         JSON esperado:
         {{
-            "document_type": "Ex: Tutorial, Prova, Documentação, Currículo, Livro, Artigo",
-            "main_subject": "O tópico central do arquivo em poucas palavras",
+            "document_type": "Ex: Petição Inicial, Contrato Social, Sentença, Procuração, Parecer",
+            "main_subject": "O tópico central jurídico em poucas palavras",
+            "case_number": "Se houver, extraia o número do processo (ex: 0000000-00.0000.0.00.0000)",
+            "parties": ["Nome da Parte 1", "Nome da Parte 2"],
             "keywords": ["tag1", "tag2", "tag3"],
-            "summary": "Um resumo de uma frase sobre o conteúdo"
+            "summary": "Um resumo jurídico de uma frase sobre o conteúdo"
         }}
         """
         
@@ -146,6 +149,8 @@ class RAGEngine:
             return {
                 "document_type": "Desconhecido",
                 "main_subject": "Indeterminado",
+                "case_number": "Não identificado",
+                "parties": [],
                 "keywords": [],
                 "summary": "Não foi possível gerar resumo."
             }
@@ -543,6 +548,7 @@ class RAGEngine:
                 "Pergunta: {query_str}\n\n"
                 "Responda à pergunta de forma profissional e extremamente bem estruturada usando Markdown.\n"
                 "Use bullet points, negrito para termos chave e separe por tópicos se necessário.\n"
+                "OBRIGATÓRIO: Cite a fonte de cada informação relevante no formato [Nome do Arquivo, pág. X].\n"
                 "Se a informação não estiver no contexto, diga que não encontrou.\n"
                 "Resposta:"
             )

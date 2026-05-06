@@ -310,7 +310,7 @@ class PDFDocumentLoader:
     ) -> List[Document]:
         """Padroniza metadados após o carregamento."""
         base_metadata = {
-            "file_name": file_path.name,
+            "file_name": (extra_metadata or {}).get("uploaded_filename", file_path.name),
             "file_path": str(file_path.absolute()),
             "total_pages": len(documents),
             "source_type": source,
