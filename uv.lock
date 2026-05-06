@@ -1689,6 +1689,20 @@ wheels = [
 ]
 
 [[package]]
+name = "limits"
+version = "5.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deprecated" },
+    { name = "packaging" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/69/826a5d1f45426c68d8f6539f8d275c0e4fcaa57f0c017ec3100986558a41/limits-5.8.0.tar.gz", hash = "sha256:c9e0d74aed837e8f6f50d1fcebcf5fd8130957287206bc3799adaee5092655da", size = 226104, upload-time = "2026-02-05T07:17:35.859Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/98/cb5ca20618d205a09d5bec7591fbc4130369c7e6308d9a676a28ff3ab22c/limits-5.8.0-py3-none-any.whl", hash = "sha256:ae1b008a43eb43073c3c579398bd4eb4c795de60952532dc24720ab45e1ac6b8", size = 60954, upload-time = "2026-02-05T07:17:34.425Z" },
+]
+
+[[package]]
 name = "llama-cloud"
 version = "0.1.46"
 source = { registry = "https://pypi.org/simple" }
@@ -1812,6 +1826,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4e/d0/671b23ccff255c9bce132a84ffd5a6f4541ceefdeab9c1786b08c9722f2e/llama_index_instrumentation-0.5.0.tar.gz", hash = "sha256:eeb724648b25d149de882a5ac9e21c5acb1ce780da214bda2b075341af29ad8e", size = 43831, upload-time = "2026-03-12T20:17:06.742Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c3/45/6dcaccef44e541ffa138e4b45e33e0d40ab2a7d845338483954fcf77bc75/llama_index_instrumentation-0.5.0-py3-none-any.whl", hash = "sha256:aaab83cddd9dd434278891012d8995f47a3bc7ed1736a371db90965348c56a21", size = 16444, upload-time = "2026-03-12T20:17:05.957Z" },
+]
+
+[[package]]
+name = "llama-index-llms-fireworks"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "llama-index-llms-openai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/00/90/dfdc5e100642421f413e220e88c2de24206241b0b228b4dfe99d32c74890/llama_index_llms_fireworks-0.5.1.tar.gz", hash = "sha256:c4e1a7d5d23ed8f6e6408883753e71b8faea3cde21d861a915f05e0301fd6c2f", size = 6259, upload-time = "2026-03-13T16:15:48.191Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/a1/9f7672a058c312ba57d5d8a8307572aa61e3416fdab7d1cd4aca4f3302cc/llama_index_llms_fireworks-0.5.1-py3-none-any.whl", hash = "sha256:14e3b2fbfbf5f47143c29c967bb156eb5ac1f54607f496713ef0332f2c6c53dd", size = 6445, upload-time = "2026-03-13T16:15:48.803Z" },
 ]
 
 [[package]]
@@ -3875,6 +3902,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-json-logger"
+version = "4.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/ff/3cc9165fd44106973cd7ac9facb674a65ed853494592541d339bdc9a30eb/python_json_logger-4.1.0.tar.gz", hash = "sha256:b396b9e3ed782b09ff9d6e4f1683d46c83ad0d35d2e407c09a9ebbf038f88195", size = 17573, upload-time = "2026-03-29T04:39:56.805Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/be/0631a861af4d1c875f096c07d34e9a63639560a717130e7a87cbc82b7e3f/python_json_logger-4.1.0-py3-none-any.whl", hash = "sha256:132994765cf75bf44554be9aa49b06ef2345d23661a96720262716438141b6b2", size = 15021, upload-time = "2026-03-29T04:39:55.266Z" },
+]
+
+[[package]]
 name = "python-multipart"
 version = "0.0.27"
 source = { registry = "https://pypi.org/simple" }
@@ -3984,6 +4020,7 @@ dependencies = [
     { name = "llama-index" },
     { name = "llama-index-embeddings-google-genai" },
     { name = "llama-index-embeddings-openai" },
+    { name = "llama-index-llms-fireworks" },
     { name = "llama-index-llms-google-genai" },
     { name = "llama-index-llms-openai" },
     { name = "llama-index-readers-docling" },
@@ -3996,8 +4033,11 @@ dependencies = [
     { name = "pymupdf" },
     { name = "pypdf2" },
     { name = "python-dotenv" },
+    { name = "python-json-logger" },
     { name = "python-multipart" },
+    { name = "slowapi" },
     { name = "streamlit" },
+    { name = "tenacity" },
     { name = "tokenizers" },
     { name = "uvicorn" },
 ]
@@ -4011,6 +4051,7 @@ requires-dist = [
     { name = "llama-index", specifier = ">=0.14.20" },
     { name = "llama-index-embeddings-google-genai", specifier = ">=0.5.0" },
     { name = "llama-index-embeddings-openai", specifier = ">=0.6.0" },
+    { name = "llama-index-llms-fireworks", specifier = ">=0.5.1" },
     { name = "llama-index-llms-google-genai", specifier = ">=0.9.1" },
     { name = "llama-index-llms-openai", specifier = ">=0.7.5" },
     { name = "llama-index-readers-docling" },
@@ -4023,8 +4064,11 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.27.2.2" },
     { name = "pypdf2", specifier = ">=3.0.1" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "python-json-logger", specifier = ">=4.1.0" },
     { name = "python-multipart" },
+    { name = "slowapi", specifier = ">=0.1.9" },
     { name = "streamlit", specifier = ">=1.56.0" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "tokenizers", specifier = "<=0.23.0" },
     { name = "uvicorn" },
 ]
@@ -4530,6 +4574,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "slowapi"
+version = "0.1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "limits" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a0/99/adfc7f94ca024736f061257d39118e1542bade7a52e86415a4c4ae92d8ff/slowapi-0.1.9.tar.gz", hash = "sha256:639192d0f1ca01b1c6d95bf6c71d794c3a9ee189855337b4821f7f457dddad77", size = 14028, upload-time = "2024-02-05T12:11:52.13Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2b/bb/f71c4b7d7e7eb3fc1e8c0458a8979b912f40b58002b9fbf37729b8cb464b/slowapi-0.1.9-py3-none-any.whl", hash = "sha256:cfad116cfb84ad9d763ee155c1e5c5cbf00b0d47399a769b227865f5df576e36", size = 14670, upload-time = "2024-02-05T12:11:50.898Z" },
 ]
 
 [[package]]

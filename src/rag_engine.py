@@ -4,8 +4,11 @@ Este módulo implementa a classe RAGEngine que orquestra a indexação
 de documentos e a geração de respostas usando LlamaIndex e Google Gemini.
 """
 
+import time
 import logging
 from typing import Optional, List, Any, Dict, Union
+
+from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 
 import chromadb
 from llama_index.core import Document, Settings, VectorStoreIndex, StorageContext
@@ -45,18 +48,6 @@ class RAGEngine:
         >>> response = engine.query("O que é RAG?")
     """
     
-    def __init__(self, api_key: str, config: RAGConfig):
-        """Inicializa o motor RAG com configurações e credenciais.
-        
-        Args:
-            api_key: Chave de API do Google Generative AI.
-            config: Instância de RAGConfig com parâmetros.
-            
-        Raises:
-            ValueError: Se a API key for vazia ou inválida.
-        """
-        if not api_key:
-            raise ValueError("API key é obrigatória")
     def __init__(
         self, 
         config: RAGConfig, 
@@ -137,8 +128,8 @@ class RAGEngine:
         """
         
         try:
-            # Tenta obter a resposta da IA
-            response = Settings.llm.complete(prompt)
+            # Tenta obter a resposta da IA (com retry para erros transitórios)
+            response = self._llm_complete_with_retry(prompt)
             import json
             import re
             
@@ -158,6 +149,23 @@ class RAGEngine:
                 "keywords": [],
                 "summary": "Não foi possível gerar resumo."
             }
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        before_sleep=before_sleep_log(logging.getLogger("hermes.retry"), logging.WARNING),
+        reraise=True,
+    )
+    def _llm_complete_with_retry(self, prompt: str):
+        """Chamada LLM com retry para erros transitórios."""
+        try:
+            return Settings.llm.complete(prompt)
+        except Exception as e:
+            error_str = str(e).lower()
+            if any(kw in error_str for kw in ["rate limit", "429", "503", "timeout", "overloaded", "quota"]):
+                self.logger.warning(f"Erro transitório LLM, retrying: {e}")
+                raise ConnectionError(str(e)) from e
+            raise
     
     def _setup_llm(self) -> None:
         """Configura o LLM com base no provedor escolhido."""
@@ -259,8 +267,14 @@ class RAGEngine:
             self.logger.error(f"Erro ao configurar chunking: {e}")
             raise
             
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=5),
+        before_sleep=before_sleep_log(logging.getLogger("hermes.retry"), logging.WARNING),
+        reraise=True,
+    )
     def _setup_vector_store(self) -> None:
-        """Configura a conexão com o banco de dados vetorial ChromaDB."""
+        """Configura a conexão com o banco de dados vetorial ChromaDB (com retry)."""
         try:
             # Conecta ao ChromaDB rodando como servidor
             self.chroma_client = chromadb.HttpClient(

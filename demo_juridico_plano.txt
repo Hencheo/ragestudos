@@ -1,0 +1,32 @@
+# ESTRATÉGIA PARA DEMONSTRAÇÃO JURÍDICA - HERMES RAG
+
+Este documento detalha a estratégia de implementação e demonstração do Hermes RAG para o setor jurídico (Escritórios de Advocacia).
+
+## 1. PRINCIPAIS GARGALOS IDENTIFICADOS
+*   **Gestão de Conhecimento:** Dificuldade em reutilizar teses e petições de sucesso perdidas em pastas de rede.
+*   **Análise de Contratos:** Tempo excessivo gasto revisando cláusulas padrão e identificando riscos.
+*   **Atendimento ao Cliente:** Sobrecarga de advogados com dúvidas básicas sobre processos e procedimentos.
+
+## 2. CASOS DE USO PARA O DEMO
+*   **Memória Jurídica:** Busca semântica em petições antigas para encontrar argumentos vencedores.
+*   **Análise Normativa:** IA que responde sobre leis específicas e jurisprudências baseada em uma biblioteca de PDFs selecionada pelo escritório.
+*   **FAQ Inteligente:** Chatbot que explica termos jurídicos e procedimentos internos para clientes 24/7.
+
+## 3. SUGESTÃO DE BASE DE DADOS (MOCK)
+Para o demo, utilize um conjunto de 5 a 10 documentos públicos:
+*   Modelos de Contratos de Prestação de Serviços.
+*   Petições Iniciais de casos comuns (ex: Indenizações, Divórcios).
+*   Um PDF guia "Como funciona o Escritório X" (Procedimentos, Horários, Especialidades).
+
+## 4. DIFERENCIAIS TÉCNICOS A SEREM DESTACADOS
+*   **Rastreabilidade:** Cada resposta vem acompanhada da fonte exata (Documento e Página).
+*   **Privacidade:** Dados armazenados localmente/privadamente no ChromaDB.
+*   **Estruturação Markdown:** Respostas profissionais organizadas em tópicos e negritos (Ideal para leitura rápida).
+*   **Busca Híbrida:** Garante que a IA encontre termos jurídicos exatos (números de leis, nomes de partes), mesmo que o contexto semântico seja amplo.
+
+## 5. INTEGRAÇÃO TELEGRAM
+*   Utilizar o motor do Hermes como backend para o bot já existente.
+*   Possibilidade de criar um canal direto de consulta rápida para os advogados via Telegram enquanto estão no fórum ou em trânsito.
+
+---
+Documento gerado pelo Hermes em 05/05/2026

@@ -1,13 +1,88 @@
-const API_URL = "http://localhost:8000";
+/**
+ * API Client do Hermes RAG Engine.
+ * 
+ * Inclui:
+ * - Retry automático (2 tentativas) para erros transitórios
+ * - Timeout padrão de 60s
+ * - Tratamento de rate limiting (429)
+ * - Cache-busting para requests GET
+ */
 
-async function safeFetch(url: string, options?: RequestInit) {
+const API_URL = "http://localhost:8000";
+const DEFAULT_TIMEOUT_MS = 60000;
+const MAX_RETRIES = 2;
+
+class ApiError extends Error {
+  status: number;
+  isRateLimit: boolean;
+  isServerError: boolean;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.isRateLimit = status === 429;
+    this.isServerError = status >= 500;
+  }
+}
+
+async function safeFetch(
+  url: string,
+  options?: RequestInit,
+  retries: number = MAX_RETRIES
+): Promise<any> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+
+  const fetchOptions: RequestInit = {
+    ...options,
+    signal: controller.signal,
+  };
+
   try {
-    const response = await fetch(url, options);
-    if (!response.ok) throw new Error(`Erro na API: ${response.statusText}`);
+    const response = await fetch(url, fetchOptions);
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : 5000;
+
+      if (retries > 0) {
+        console.warn(`⏳ Rate limited. Aguardando ${waitMs}ms antes de retry...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        return safeFetch(url, options, retries - 1);
+      }
+      throw new ApiError("Limite de requisições excedido. Aguarde um momento.", 429);
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      const detail = errorBody ? `: ${errorBody}` : "";
+
+      // Retry em erros de servidor (5xx)
+      if (response.status >= 500 && retries > 0) {
+        console.warn(`🔄 Erro ${response.status}, tentando novamente...`);
+        await new Promise((r) => setTimeout(r, 1000));
+        return safeFetch(url, options, retries - 1);
+      }
+
+      throw new ApiError(`Erro na API (${response.status})${detail}`, response.status);
+    }
+
     return await response.json();
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+
+    // Retry em erros de rede
+    if (retries > 0 && (err.name === "AbortError" || err.message?.includes("fetch"))) {
+      console.warn("🔄 Erro de conexão, tentando novamente...");
+      await new Promise((r) => setTimeout(r, 1000));
+      return safeFetch(url, options, retries - 1);
+    }
+
     console.warn(`⚠️ Backend offline em ${url}`);
     throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -43,10 +118,32 @@ export async function clearDatabase() {
 }
 
 export async function getUploadStatus(taskId: string) {
-  return safeFetch(`${API_URL}/upload/status/${taskId}`);
+  return safeFetch(`${API_URL}/upload/status/${encodeURIComponent(taskId)}`);
 }
 
 export async function cancelUpload(taskId: string) {
-  return safeFetch(`${API_URL}/upload/cancel/${taskId}`, { method: "POST" });
+  return safeFetch(`${API_URL}/upload/cancel/${encodeURIComponent(taskId)}`, { method: "POST" });
 }
 
+export async function getHealth() {
+  return safeFetch(`${API_URL}/health`);
+}
+
+export async function getMetrics() {
+  return safeFetch(`${API_URL}/metrics`);
+}
+
+export async function deleteDocument(fileName: string) {
+  return safeFetch(`${API_URL}/documents/${encodeURIComponent(fileName)}`, { method: "DELETE" });
+}
+
+export async function getConfig() {
+  return safeFetch(`${API_URL}/config`);
+}
+
+export async function updateConfig(provider: string, model: string) {
+  const formData = new FormData();
+  formData.append("llm_provider", provider);
+  formData.append("model_name", model);
+  return safeFetch(`${API_URL}/config`, { method: "POST", body: formData });
+}

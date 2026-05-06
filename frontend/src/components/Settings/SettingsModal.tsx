@@ -7,7 +7,7 @@ import {
   X, Settings, Database, Cpu, Trash2, Upload, 
   Check, AlertCircle, FileText, Globe, Palette 
 } from "lucide-react";
-import { uploadFiles, getUploadStatus, cancelUpload } from "@/lib/api";
+import { uploadFiles, getUploadStatus, cancelUpload, getStats, deleteDocument, clearDatabase, getConfig, updateConfig } from "@/lib/api";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -374,11 +374,8 @@ function DocumentosTab() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("http://localhost:8000/stats");
-      if (res.ok) {
-        const data = await res.json();
-        setDbStats(data);
-      }
+      const data = await getStats();
+      setDbStats(data);
     } catch (err) {
       console.error("Erro ao buscar stats:", err);
     } finally {
@@ -393,24 +390,20 @@ function DocumentosTab() {
   const handleDeleteFile = async (fileName: string) => {
     if (!confirm(`Deseja realmente remover o arquivo "${fileName}"?`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/documents/${encodeURIComponent(fileName)}`, {
-        method: "DELETE"
-      });
-      if (res.ok) fetchStats();
-      else alert("Erro ao deletar arquivo.");
+      await deleteDocument(fileName);
+      fetchStats();
     } catch (err) {
       console.error(err);
+      alert("Erro ao deletar arquivo.");
     }
   };
 
   const handleClearDatabase = async () => {
     if (!confirm("⚠️ ATENÇÃO: Isso apagará TODO o conhecimento do Hermes. Deseja continuar?")) return;
     try {
-      const res = await fetch("http://localhost:8000/clear", { method: "POST" });
-      if (res.ok) {
-        fetchStats();
-        alert("Base de conhecimento limpa com sucesso.");
-      }
+      await clearDatabase();
+      fetchStats();
+      alert("Base de conhecimento limpa com sucesso.");
     } catch (err) {
       console.error(err);
     }
@@ -476,8 +469,7 @@ function MotorTab() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/config")
-      .then(res => res.json())
+    getConfig()
       .then(data => {
         setLlmProvider(data.llm_provider);
         setModelName(data.model_name);
@@ -488,12 +480,8 @@ function MotorTab() {
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
-    const formData = new FormData();
-    formData.append("llm_provider", llmProvider);
-    formData.append("model_name", modelName);
     try {
-      const res = await fetch("http://localhost:8000/config", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Falha ao salvar configuração");
+      await updateConfig(llmProvider, modelName);
       setMessage({ type: 'success', text: "Configuração do motor atualizada com sucesso!" });
     } catch (err) {
       setMessage({ type: 'error', text: "Erro ao salvar. Verifique o backend." });

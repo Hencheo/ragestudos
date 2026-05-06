@@ -1,0 +1,41 @@
+# 📋 PLANO DE EVOLUÇÃO - HERMES RAG ENGINE (V0.2+)
+
+Este documento detalha a estratégia para as próximas funcionalidades do Hermes, focando em aplicações práticas de estudo e gestão de conhecimento.
+
+---
+
+## 🎯 OBJETIVOS PRINCIPAIS
+
+### 1. Módulo de Simulados (Modo Estudante) 🎓
+Transformar o Hermes em uma ferramenta ativa de estudo para provas e concursos.
+- **Botão de Simulado:** Nova interface dedicada para iniciar sessões de teste.
+- **Ingestão Acadêmica:** Otimização do processamento de PDFs universitários/acadêmicos.
+- **Geração Dinâmica de Questões:** O LLM deve criar perguntas baseadas estritamente no conteúdo dos documentos fornecidos.
+- **Correção Comentada:** Sistema que não apenas dá a resposta, mas explica o erro com base na fonte.
+
+### 2. Second Brain & Knowledge Management 🧠
+Consolidar o Hermes como uma base de conhecimento corporativa e pessoal de alta fidelidade.
+- **Hallucination-Free Zone:** Refinamento do prompt e do sistema de RAG para garantir que o Hermes diga "Não sei" se a informação não estiver nos documentos.
+- **Contexto Deep-Dive:** Capacidade de relacionar múltiplos documentos para responder perguntas complexas sobre a empresa ou pessoa.
+- **Organização Inteligente:** Categorização automática de documentos via metadados extraídos por IA.
+
+---
+
+## 🛠️ ROTEIRO TÉCNICO
+
+### Fase A: Interface e Experiência
+- [ ] Criar o componente de UI para o "Modo Simulado".
+- [ ] Implementar fluxo de seleção de documentos específicos para cada sessão de estudo.
+
+### Fase B: Backend e Lógica
+- [ ] Desenvolver `Prompt Templates` específicos para geração de simulados.
+- [ ] Implementar Reranker para garantir que as questões usem os trechos mais relevantes.
+- [ ] Adicionar suporte a exportação de simulados (PDF/Markdown).
+
+### Fase C: Expansão
+- [ ] Integração com outras fontes de dados (Links, Notion, Google Drive).
+- [ ] Dashboard de progresso de aprendizado.
+
+---
+
+**Ideia Central:** O Hermes deve ser a fonte da verdade. Seja para um estudante revisando matéria ou para um CEO consultando atas de reunião, a resposta deve ser precisa, rápida e baseada em fatos.
